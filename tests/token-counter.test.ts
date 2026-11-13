@@ -9,6 +9,7 @@ import {
     existsSync,
     mkdirSync,
     mkdtempSync,
+    rmSync,
     readFileSync,
     symlinkSync,
     writeFileSync,
@@ -27,6 +28,17 @@ const tsHost = (host: string) =>
     process.versions.bun ? [host] : ["--import", "tsx", host]
 const PATHOLOGICAL = "a".repeat(500_000)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Every temp dir this file creates is removed when the run ends.
+const tmpDirs: string[] = []
+const makeTmpDir = (prefix: string) => {
+    const dir = mkdtempSync(join(tmpdir(), prefix))
+    tmpDirs.push(dir)
+    return dir
+}
+test.after(() => {
+    for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
+})
 
 function alive(pid: number | undefined): boolean {
     if (!pid || !existsSync(`/proc/${pid}`)) return false
