@@ -44,6 +44,7 @@ import {
     saveSessionState,
     syncToolCache,
 } from "./state"
+import { reconstructFromHistory } from "./compress/reconstruct"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { getModelInfo } from "./messages/inject/utils"
 
@@ -206,6 +207,17 @@ export function createChatMessageTransformHandler(
 
             if (state.sessionId) {
                 await logger.saveContext(state.sessionId, workingMessages)
+            }
+
+            if (state.needsReconstruction) {
+                const reconstructed = reconstructFromHistory(state, logger, workingMessages)
+                state.needsReconstruction = false
+                if (reconstructed > 0) {
+                    logger.info("Compression state reconstructed from conversation history", {
+                        blocks: reconstructed,
+                    })
+                    await saveSessionState(state, logger)
+                }
             }
 
             commitMessages(output.messages, workingMessages)

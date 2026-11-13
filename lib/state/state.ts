@@ -1,6 +1,7 @@
 import type { SessionState, ToolParameterEntry, WithParts } from "./types"
 import type { Logger } from "../logger"
 import { applyPendingCompressionDurations } from "../compress/timing"
+import { hasCompressHistory } from "../compress/reconstruct"
 import { loadManualModeSetting, loadSessionState, saveSessionState, sessionStateFileExists } from "./persistence"
 import {
     isSubAgentSession,
@@ -56,6 +57,11 @@ export const checkSession = async (
             timestamp: lastCompactionTimestamp,
         })
 
+        if (hasCompressHistory(messages)) {
+            state.needsReconstruction = true
+            logger.info("Post-compaction compression history detected — reconstruction needed")
+        }
+
         saveSessionState(state, logger).catch((error) => {
             logger.warn("Failed to persist state reset after compaction", {
                 error: error instanceof Error ? error.message : String(error),
@@ -104,6 +110,7 @@ export function createSessionState(idFormat: IdFormat = "xml"): SessionState {
         currentTurn: 0,
         modelContextLimit: undefined,
         systemPromptTokens: undefined,
+        needsReconstruction: false,
     }
 }
 
@@ -141,6 +148,7 @@ export function resetSessionState(state: SessionState): void {
     state.systemPromptTokens = undefined
     state.persistedLoadFailed = undefined
     state.tokenUsageEstimate = undefined
+    state.needsReconstruction = false
 }
 
 // Replaced whenever a state is reset, so a slower initialisation can tell that it lost ownership.
@@ -155,6 +163,7 @@ export function exclusive<T>(state: SessionState, operation: () => Promise<T>): 
     const pending = (locks.get(state) ?? Promise.resolve()).catch(() => {}).then(operation)
     locks.set(state, pending)
     return pending
+
 }
 
 export async function ensureSessionInitialized(
@@ -207,6 +216,11 @@ export async function ensureSessionInitialized(
             })
         }
         return
+    }
+
+    if (hasCompressHistory(messages)) {
+        state.needsReconstruction = true
+        logger.info("New session with compression history detected — reconstruction needed")
     }
 
     if (!pruneMessages) {

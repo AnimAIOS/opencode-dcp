@@ -119,4 +119,5 @@ export interface SessionState {
     persistedLoadFailed?: boolean
     /** Memo for the estimated token usage fallback in getCurrentTokenUsage. */
     tokenUsageEstimate?: { key: string; value: number }
+    needsReconstruction: boolean
 }
