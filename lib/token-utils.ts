@@ -1,17 +1,7 @@
 import { SessionState, WithParts } from "./state"
 import { AssistantMessage, UserMessage } from "@opencode-ai/sdk/v2"
 import { Logger } from "./logger"
-import * as _anthropicTokenizer from "@anthropic-ai/tokenizer"
-const getAnthropicTokenizer = (_anthropicTokenizer.getTokenizer ??
-    (_anthropicTokenizer as any).default?.getTokenizer) as typeof _anthropicTokenizer.getTokenizer
-// The package's countTokens() builds and frees a new WASM tokenizer on every call (~70 ms each), which
-// blocks the host for seconds when many tool outputs are counted. Build it once and reuse it: the
-// counts are identical (same encoder, same NFKC normalisation and special-token handling).
-let anthropicTokenizer: ReturnType<typeof getAnthropicTokenizer> | undefined
-function anthropicCountTokens(text: string): number {
-    anthropicTokenizer ??= getAnthropicTokenizer()
-    return anthropicTokenizer.encode(text.normalize("NFKC"), "all").length
-}
+import { tokenCounter } from "./token-counter"
 import { getLastUserMessage } from "./messages/query"
 
 export function getCurrentTokenUsage(state: SessionState, messages: WithParts[]): number {
@@ -114,16 +104,13 @@ export function getCurrentParams(
     return { providerId, modelId, agent, variant }
 }
 
-export function countTokens(text: string): number {
+/** Exact count off the host event loop; rejects with TokenCountError instead of estimating. */
+export async function countTokens(text: string): Promise<number> {
     if (!text) return 0
-    try {
-        return anthropicCountTokens(text)
-    } catch {
-        return Math.round(text.length / 4)
-    }
+    return tokenCounter.count(text)
 }
 
-export function estimateTokensBatch(texts: string[]): number {
+export async function estimateTokensBatch(texts: string[]): Promise<number> {
     if (texts.length === 0) return 0
     return countTokens(texts.join(" "))
 }
@@ -171,7 +158,7 @@ export function extractToolContent(part: any): string[] {
     return contents
 }
 
-export function countToolTokens(part: any): number {
+export async function countToolTokens(part: any): Promise<number> {
     const contents = extractToolContent(part)
     return estimateTokensBatch(contents)
 }
@@ -185,7 +172,7 @@ export function getTotalToolTokens(state: SessionState, toolIds: string[]): numb
     return total
 }
 
-export function countMessageTextTokens(msg: WithParts): number {
+export async function countMessageTextTokens(msg: WithParts): Promise<number> {
     const texts: string[] = []
     const parts = Array.isArray(msg.parts) ? msg.parts : []
     for (const part of parts) {
@@ -197,7 +184,7 @@ export function countMessageTextTokens(msg: WithParts): number {
     return estimateTokensBatch(texts)
 }
 
-export function countAllMessageTokens(msg: WithParts): number {
+export async function countAllMessageTokens(msg: WithParts): Promise<number> {
     const parts = Array.isArray(msg.parts) ? msg.parts : []
     const texts: string[] = []
     for (const part of parts) {

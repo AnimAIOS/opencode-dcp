@@ -283,7 +283,7 @@ export async function setup(ctx: Plugin.Context) {
                     }
                 }
                 state.modelContextLimit = limits.get(`${event.model.providerID}/${event.model.id}`)
-                state.systemPromptTokens = countTokens(
+                state.systemPromptTokens = await countTokens(
                     event.system.map((part) => part.text).join("\n"),
                 )
                 const view = project(event.messages, entries, {
@@ -295,7 +295,7 @@ export async function setup(ctx: Plugin.Context) {
                 assignMessageRefs(state, view.messages)
                 // Compaction may select only a prefix; block origins can be in the retained tail.
                 const blocksChanged = syncCompressionBlocks(state, logger, messages)
-                syncToolCache(state, config, logger, view.messages)
+                await syncToolCache(state, config, logger, view.messages)
                 buildToolIdList(state, view.messages)
                 // Mirror the compress-tool pipeline: the automatic strategies mark
                 // superseded/failed tool outputs for pruning on every request, not
@@ -318,7 +318,7 @@ export async function setup(ctx: Plugin.Context) {
                     view.messages,
                     config.experimental.allowSubAgents,
                 )
-                const priorities = buildPriorityMap(config, state, view.messages)
+                const priorities = await buildPriorityMap(config, state, view.messages)
                 prompts.reload()
                 injectCompressNudges(
                     state,
@@ -474,7 +474,7 @@ export async function setup(ctx: Plugin.Context) {
                                   "Permission 'ask' is not supported by the V2 plugin API yet.",
                           }
                         : {}),
-                    context: analyzeContextTokens(state, messages),
+                    context: await analyzeContextTokens(state, messages),
                     stats: await buildStatsReport(state, logger),
                 }
             }),
