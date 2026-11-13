@@ -100,14 +100,14 @@ export async function reconstructFromHistory(
                     range.endId,
                 )
 
-                const selection = resolveSelection(searchContext, startReference, endReference)
+                const selection = await resolveSelection(searchContext, startReference, endReference)
                 const anchorMessageId = resolveAnchorMessageId(startReference)
 
                 const blockId = allocateBlockId(state)
                 const storedSummary = wrapCompressedSummary(blockId, range.summary)
-                const summaryTokens = countTokens(storedSummary)
+                const summaryTokens = await countTokens(storedSummary)
 
-                const consumedBlockIds = (await selection).requiredBlockIds
+                const consumedBlockIds = selection.requiredBlockIds
 
                 applyCompressionState(
                     state,
