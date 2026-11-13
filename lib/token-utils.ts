@@ -41,7 +41,8 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
         const reasoning = assistantInfo.tokens?.reasoning || 0
         const cacheRead = assistantInfo.tokens?.cache?.read || 0
         const cacheWrite = assistantInfo.tokens?.cache?.write || 0
-        return input + output + reasoning + cacheRead + cacheWrite
+        const reportedUsage = input + output + reasoning + cacheRead + cacheWrite
+        return Math.max(reportedUsage, estimateCurrentMessageTokenUsage(state, messages))
     }
 
     if (foundTokens) {
@@ -64,6 +65,24 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
     }
     state.tokenUsageEstimate = { key, value: estimate }
     return estimate
+}
+
+function estimateCurrentMessageTokenUsage(state: SessionState, messages: WithParts[]): number {
+    let total = 0
+
+    for (const msg of messages) {
+        if (
+            state.lastCompaction > 0 &&
+            (msg.info.time.created < state.lastCompaction ||
+                (msg.info.summary === true && msg.info.time.created === state.lastCompaction))
+        ) {
+            continue
+        }
+
+        total += countAllMessageTokens(msg)
+    }
+
+    return total
 }
 
 export function getCurrentParams(
