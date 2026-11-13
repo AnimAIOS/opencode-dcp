@@ -77,6 +77,18 @@ export async function setup(ctx: Plugin.Context) {
         }
         const sessionID = route.sessionID
         try {
+            const status = await client.status({}, options())
+            if (!status.enabled) {
+                show(() => (
+                    <StatusDialog
+                        api={api}
+                        title="DCP"
+                        eyebrow="Disabled"
+                        message="DCP is disabled in configuration."
+                    />
+                ))
+                return
+            }
             const data = await client.snapshot({ sessionID }, options())
             const back = () => {
                 void open()
