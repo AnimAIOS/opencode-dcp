@@ -51,6 +51,7 @@ export const syncCompressionBlocks = (
 
     const now = Date.now()
     const orderedBlocks = Array.from(messagesState.blocksById.values()).sort(sortBlocksByCreation)
+    const missingOriginBlockIds: number[] = []
 
     for (const block of orderedBlocks) {
         const hasOriginMessage =
@@ -151,6 +152,7 @@ export const syncCompressionBlocks = (
         logger.info("Synced compress block state", {
             deactivatedCount,
             reactivatedCount,
+            missingOriginBlockIds,
         })
     }
 

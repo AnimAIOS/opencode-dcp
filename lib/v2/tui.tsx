@@ -5,7 +5,6 @@ import type { ViewApi } from "../tui/types"
 import { resolveViewTheme } from "./theme"
 import { rpc } from "./rpc"
 import { dispatchDcpServerCommand } from "./slash-command"
-import { panelTheme } from "./theme"
 export async function setup(ctx: Plugin.Context) {
     // Feature-detect the host UI APIs this panel needs. A host without them
     // (or a future shape change) must degrade to headless DCP, never crash.
