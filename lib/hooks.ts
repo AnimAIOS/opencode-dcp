@@ -165,6 +165,10 @@ export function createChatMessageTransformHandler(
 
             await checkSession(client, state, logger, workingMessages, config.manualMode.enabled)
 
+            if (state.modelContextLimit === undefined) {
+                state.modelContextLimit = await lookupModelContextLimit(client, workingMessages)
+            }
+
             syncCompressPermissionState(state, config, hostPermissions, workingMessages)
 
             if (state.isSubAgent && !config.experimental.allowSubAgents) {
@@ -173,7 +177,7 @@ export function createChatMessageTransformHandler(
             }
 
             stripHallucinations(workingMessages)
-            cacheSystemPromptTokens(state, workingMessages)
+            await cacheSystemPromptTokens(state, workingMessages)
             assignMessageRefs(state, workingMessages)
             syncCompressionBlocks(state, logger, workingMessages)
             syncToolCache(state, config, logger, workingMessages)
