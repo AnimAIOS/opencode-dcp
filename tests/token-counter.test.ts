@@ -93,7 +93,7 @@ function childArgs(script: string, dir: string, maxTextLength = 1024 * 1024) {
 }
 
 function fakeSidecar(source: string): string {
-    const dir = mkdtempSync(join(tmpdir(), "dcp-fake-sidecar-")) + "/"
+    const dir = makeTmpDir("dcp-fake-sidecar-") + "/"
     // CommonJS regardless of any enclosing package.json.
     writeFileSync(dir + "package.json", '{"type":"commonjs"}')
     copyFileSync(
@@ -293,7 +293,7 @@ test("malformed sidecars fail closed without fallback counts", async () => {
     for (const [name, source, code] of cases) {
         const dir =
             name === "missing"
-                ? mkdtempSync(join(tmpdir(), "dcp-missing-")) + "/"
+                ? makeTmpDir("dcp-missing-") + "/"
                 : fakeSidecar(source)
         const counter = new TokenCounter({ startupTimeoutMs: 1000, jobTimeoutMs: 1000 }, dir)
         try {
@@ -334,7 +334,7 @@ test("child supervisor kills itself on its own deadline and on stdin loss", asyn
 
 test("child dies when its parent host is SIGKILLed mid-count", async () => {
     const counterPath = fileURLToPath(new URL("../lib/token-counter.ts", import.meta.url))
-    const dir = mkdtempSync(join(tmpdir(), "dcp-parent-kill-"))
+    const dir = makeTmpDir("dcp-parent-kill-")
     // tsx compiles a .ts host as CommonJS unless the directory is type:module, which
     // breaks the top-level await below.
     writeFileSync(join(dir, "package.json"), '{"type":"module"}')
@@ -375,9 +375,9 @@ test("failed or disposed startup leaves no timer holding the host open", async (
     for (const [name, source] of cases) {
         const dir =
             name === "missing"
-                ? mkdtempSync(join(tmpdir(), "dcp-missing-")) + "/"
+                ? makeTmpDir("dcp-missing-") + "/"
                 : fakeSidecar(source)
-        const hostDir = mkdtempSync(join(tmpdir(), "dcp-startup-host-"))
+        const hostDir = makeTmpDir("dcp-startup-host-")
         // tsx compiles a .ts host as CommonJS unless the directory is type:module, which
         // breaks the top-level await below.
         writeFileSync(join(hostDir, "package.json"), '{"type":"module"}')
@@ -491,7 +491,7 @@ test("child supervisor bounds raw input during startup, active work and framing"
 
 test("an ancestor project's tsconfig and bunfig cannot redirect the tokenizer", async () => {
     // A package installed inside a project whose config aliases the tokenizer and preloads code.
-    const root = mkdtempSync(join(tmpdir(), "dcp-ancestor-config-"))
+    const root = makeTmpDir("dcp-ancestor-config-")
     writeFileSync(
         join(root, "tsconfig.json"),
         JSON.stringify({
@@ -527,7 +527,7 @@ export default { countTokens }
         join(root, "node_modules", "dcp", "node_modules"),
     )
     const text = "hello world"
-    const hostDir = mkdtempSync(join(tmpdir(), "dcp-ancestor-host-"))
+    const hostDir = makeTmpDir("dcp-ancestor-host-")
     // tsx compiles a .ts host as CommonJS unless the directory is type:module, which
     // breaks the top-level await below.
     writeFileSync(join(hostDir, "package.json"), '{"type":"module"}')
