@@ -127,7 +127,7 @@ function resolveContextTokenLimit(
     return parseLimitValue(globalLimit)
 }
 
-export function isContextOverLimits(
+export async function isContextOverLimits(
     config: PluginConfig,
     state: SessionState,
     providerId: string | undefined,
@@ -149,7 +149,7 @@ export function isContextOverLimits(
             ? undefined
             : resolvedMaxContextLimit + summaryTokenExtension
     const minContextLimit = resolveContextTokenLimit(config, state, providerId, modelId, "min")
-    const currentTokens = getCurrentTokenUsage(state, messages)
+    const currentTokens = await getCurrentTokenUsage(state, messages)
 
     const overMaxLimit = maxContextLimit === undefined ? false : currentTokens > maxContextLimit
     // minContextLimit 无法解析时（如重启后第一轮，modelContextLimit 尚未被
@@ -211,7 +211,7 @@ function buildMessagePriorityGuidance(
     return renderMessagePriorityGuidance(priorityLabel, refs)
 }
 
-function injectAnchoredNudge(message: WithParts, nudgeText: string): void {
+async function injectAnchoredNudge(message: WithParts, nudgeText: string): Promise<void> {
     if (!nudgeText.trim()) {
         return
     }
@@ -267,28 +267,28 @@ function collectTurnNudgeAnchors(
     return turnNudgeAnchors
 }
 
-function applyRangeModeAnchoredNudge(
+async function applyRangeModeAnchoredNudge(
     anchorMessageIds: Set<string>,
     messages: WithParts[],
     baseNudgeText: string,
     compressedBlockGuidance: string,
-): void {
+): Promise<void> {
     const nudgeText = appendGuidanceToDcpTag(baseNudgeText, compressedBlockGuidance)
     if (!nudgeText.trim()) {
         return
     }
 
     for (const { message } of collectAnchoredMessages(anchorMessageIds, messages)) {
-        injectAnchoredNudge(message, nudgeText)
+        await injectAnchoredNudge(message, nudgeText)
     }
 }
 
-function applyMessageModeAnchoredNudge(
+async function applyMessageModeAnchoredNudge(
     anchorMessageIds: Set<string>,
     messages: WithParts[],
     baseNudgeText: string,
     compressionPriorities?: CompressionPriorityMap,
-): void {
+): Promise<void> {
     for (const { message, index } of collectAnchoredMessages(anchorMessageIds, messages)) {
         const priorityGuidance = buildMessagePriorityGuidance(
             messages,
@@ -297,17 +297,17 @@ function applyMessageModeAnchoredNudge(
             MESSAGE_MODE_NUDGE_PRIORITY,
         )
         const nudgeText = appendGuidanceToDcpTag(baseNudgeText, priorityGuidance)
-        injectAnchoredNudge(message, nudgeText)
+        await injectAnchoredNudge(message, nudgeText)
     }
 }
 
-export function applyAnchoredNudges(
+export async function applyAnchoredNudges(
     state: SessionState,
     config: PluginConfig,
     messages: WithParts[],
     prompts: RuntimePrompts,
     compressionPriorities?: CompressionPriorityMap,
-): void {
+): Promise<void> {
     const turnNudgeAnchors = collectTurnNudgeAnchors(state, config, messages)
     const toolName = compressToolName(config)
     const nudges = {

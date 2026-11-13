@@ -396,7 +396,7 @@ test("message-mode nudges append to existing text parts and list only earlier vi
 
     const compressionPriorities = await buildPriorityMap(config, state, messages)
 
-    applyAnchoredNudges(
+    await applyAnchoredNudges(
         state,
         config,
         messages,
@@ -443,7 +443,7 @@ test("message-mode nudges exclude protected user messages from priority guidance
 
     const compressionPriorities = await buildPriorityMap(config, state, messages)
 
-    applyAnchoredNudges(
+    await applyAnchoredNudges(
         state,
         config,
         messages,
@@ -513,7 +513,7 @@ test("range-mode nudges append to existing text parts before tool outputs", asyn
     state.prune.messages.activeBlockIds.add(7)
     state.nudges.contextLimitAnchors.add("msg-assistant-1")
 
-    applyAnchoredNudges(state, config, messages, {
+    await applyAnchoredNudges(state, config, messages, {
         system: "",
         compressRange: "",
         compressMessage: "",
@@ -561,7 +561,7 @@ test("range-mode nudges inject only once for assistant messages with multiple te
     assignMessageRefs(state, messages)
     state.nudges.contextLimitAnchors.add("msg-assistant-1")
 
-    applyAnchoredNudges(state, config, messages, {
+    await applyAnchoredNudges(state, config, messages, {
         system: "",
         compressRange: "",
         compressMessage: "",
@@ -601,7 +601,7 @@ test("range-mode nudges skip empty assistant messages to avoid prefill (issue #4
     assignMessageRefs(state, messages)
     state.nudges.contextLimitAnchors.add("msg-assistant-empty")
 
-    applyAnchoredNudges(state, config, messages, {
+    await applyAnchoredNudges(state, config, messages, {
         system: "",
         compressRange: "",
         compressMessage: "",
@@ -647,7 +647,7 @@ test("range-mode nudges skip assistant with only pending tool parts (issue #463)
     assignMessageRefs(state, messages)
     state.nudges.contextLimitAnchors.add("msg-assistant-pending")
 
-    applyAnchoredNudges(state, config, messages, {
+    await applyAnchoredNudges(state, config, messages, {
         system: "",
         compressRange: "",
         compressMessage: "",
@@ -681,7 +681,7 @@ test("range-mode nudges skip assistant messages with only empty text parts (issu
     assignMessageRefs(state, messages)
     state.nudges.contextLimitAnchors.add("msg-assistant-empty-text")
 
-    applyAnchoredNudges(state, config, messages, {
+    await applyAnchoredNudges(state, config, messages, {
         system: "",
         compressRange: "",
         compressMessage: "",

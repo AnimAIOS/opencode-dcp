@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import "./lab/persistence-env"
 import test from "node:test"
 import type { WithParts } from "../lib/state"
+import { tokenCounter } from "../lib/token-counter"
+import * as anthropicTokenizer from "@anthropic-ai/tokenizer"
 import {
     COMPACTED_TOOL_OUTPUT_PLACEHOLDER,
     countAllMessageTokens,
@@ -175,10 +177,15 @@ test("counting uses the compacted tool placeholder for completed outputs", async
     await assertCounted(part, [JSON.stringify(input), COMPACTED_TOOL_OUTPUT_PLACEHOLDER])
 })
 
-test("countTokens matches @anthropic-ai/tokenizer and reuses one tokenizer", async () => {
-    const tokenizer = await import("@anthropic-ai/tokenizer")
-    const reference = (tokenizer.countTokens ??
-        (tokenizer as any).default?.countTokens) as typeof tokenizer.countTokens
+test("countTokens matches @anthropic-ai/tokenizer and reuses one tokenizer child", async () => {
+    // The package exposes countTokens both as a named and a default export across versions.
+    const defaultExport: unknown = (anthropicTokenizer as { default?: unknown }).default
+    const reference =
+        anthropicTokenizer.countTokens ??
+        (typeof defaultExport === "object" && defaultExport !== null && "countTokens" in defaultExport
+            ? (defaultExport.countTokens as typeof anthropicTokenizer.countTokens)
+            : undefined)
+    assert.equal(typeof reference, "function", "tokenizer reference countTokens missing")
     const samples = [
         "hello world",
         "Crème brûlée — ﬁ ligature ① and emoji 🚀",
@@ -186,13 +193,16 @@ test("countTokens matches @anthropic-ai/tokenizer and reuses one tokenizer", asy
         "x".repeat(10_000),
         "<|endoftext|> special tokens are counted, not rejected",
     ]
-    for (const sample of samples) assert.equal(countTokens(sample), reference(sample))
+    for (const sample of samples) assert.equal(await countTokens(sample), reference(sample))
 
-    // Building a tokenizer per call took ~70 ms; 200 calls with a shared one take a few milliseconds.
+    // Counting runs in a child process, so the per-call cost is the round-trip, not a fresh
+    // WASM tokenizer build (~70 ms). Every call must reuse the one live child.
+    const pids = new Set<number>()
     const start = performance.now()
-    for (let index = 0; index < 200; index++) countTokens(`tool output ${index} `.repeat(50))
-    assert.ok(
-        performance.now() - start < 2_000,
-        "countTokens should not rebuild the tokenizer on every call",
-    )
+    for (let index = 0; index < 200; index++) {
+        await countTokens(`tool output ${index} `.repeat(50))
+        pids.add(tokenCounter.stats.pid ?? -1)
+    }
+    assert.equal(pids.size, 1, "countTokens should reuse one child process")
+    assert.ok(performance.now() - start < 15_000, "countTokens should not respawn the child")
 })

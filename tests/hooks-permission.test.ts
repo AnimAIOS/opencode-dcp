@@ -123,6 +123,11 @@ function buildPromptStore() {
                 system: "DCP-RUNTIME-PROMPT",
                 manualExtension: "",
                 subagentExtension: "",
+                // Anchored nudges render these; the chat-message transform test drives the
+                // full nudge path, so they must be real strings.
+                contextLimitNudge: "DCP: context limit reached.",
+                turnNudge: "DCP: compress now.",
+                iterationNudge: "DCP: compress at the next opportunity.",
             }
         },
     } as any

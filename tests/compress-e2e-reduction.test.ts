@@ -193,10 +193,10 @@ test("compress tool execution shrinks the next request and persists the block", 
     const view = project(native, entries(native), session)
     assignMessageRefs(state, view.messages)
     syncCompressionBlocks(state, logger, view.messages)
-    const before = countTokens(JSON.stringify(view.messages))
+    const before = await countTokens(JSON.stringify(view.messages))
     prune(state, logger, config, view.messages)
     const restored = view.restore()
-    const after = countTokens(JSON.stringify(restored))
+    const after = await countTokens(JSON.stringify(restored))
 
     assert.ok(after < before, `expected token drop, got ${before} -> ${after}`)
     const restoredJson = JSON.stringify(restored)

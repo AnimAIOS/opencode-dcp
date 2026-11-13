@@ -20,8 +20,11 @@ import { countTokens as oracle } from "@anthropic-ai/tokenizer"
 import { TokenCounter, TokenCountError } from "../lib/token-counter"
 
 const sidecars = fileURLToPath(new URL("../lib/tokenizer/", import.meta.url))
-// TypeScript test hosts run under tsx on Node; Bun runs them directly.
-const tsHost = (host: string) => (process.versions.bun ? [host] : ["--import", "tsx", host])
+// TypeScript test hosts run under tsx on Node; Bun runs them directly. The hosts use
+// top-level await, so their directory must be type:module — tsx would otherwise compile
+// them as CommonJS and fail the transform.
+const tsHost = (host: string) =>
+    process.versions.bun ? [host] : ["--import", "tsx", host]
 const PATHOLOGICAL = "a".repeat(500_000)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -320,6 +323,9 @@ test("child supervisor kills itself on its own deadline and on stdin loss", asyn
 test("child dies when its parent host is SIGKILLed mid-count", async () => {
     const counterPath = fileURLToPath(new URL("../lib/token-counter.ts", import.meta.url))
     const dir = mkdtempSync(join(tmpdir(), "dcp-parent-kill-"))
+    // tsx compiles a .ts host as CommonJS unless the directory is type:module, which
+    // breaks the top-level await below.
+    writeFileSync(join(dir, "package.json"), '{"type":"module"}')
     const host = join(dir, "host.ts")
     writeFileSync(
         host,
@@ -359,7 +365,11 @@ test("failed or disposed startup leaves no timer holding the host open", async (
             name === "missing"
                 ? mkdtempSync(join(tmpdir(), "dcp-missing-")) + "/"
                 : fakeSidecar(source)
-        const host = join(mkdtempSync(join(tmpdir(), "dcp-startup-host-")), "host.ts")
+        const hostDir = mkdtempSync(join(tmpdir(), "dcp-startup-host-"))
+        // tsx compiles a .ts host as CommonJS unless the directory is type:module, which
+        // breaks the top-level await below.
+        writeFileSync(join(hostDir, "package.json"), '{"type":"module"}')
+        const host = join(hostDir, "host.ts")
         // No process.exit: the host must end on its own once the counter is finished.
         writeFileSync(
             host,
@@ -506,6 +516,9 @@ export default { countTokens }
     )
     const text = "hello world"
     const hostDir = mkdtempSync(join(tmpdir(), "dcp-ancestor-host-"))
+    // tsx compiles a .ts host as CommonJS unless the directory is type:module, which
+    // breaks the top-level await below.
+    writeFileSync(join(hostDir, "package.json"), '{"type":"module"}')
     const host = join(hostDir, "host.ts")
     writeFileSync(
         host,

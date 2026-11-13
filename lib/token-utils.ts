@@ -4,7 +4,7 @@ import { Logger } from "./logger"
 import { tokenCounter } from "./token-counter"
 import { getLastUserMessage } from "./messages/query"
 
-export function getCurrentTokenUsage(state: SessionState, messages: WithParts[]): number {
+export async function getCurrentTokenUsage(state: SessionState, messages: WithParts[]): Promise<number> {
     let foundTokens = false
     for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i]
@@ -32,7 +32,7 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
         const cacheRead = assistantInfo.tokens?.cache?.read || 0
         const cacheWrite = assistantInfo.tokens?.cache?.write || 0
         const reportedUsage = input + output + reasoning + cacheRead + cacheWrite
-        return Math.max(reportedUsage, estimateCurrentMessageTokenUsage(state, messages))
+        return Math.max(reportedUsage, await estimateCurrentMessageTokenUsage(state, messages))
     }
 
     if (foundTokens) {
@@ -49,30 +49,24 @@ export function getCurrentTokenUsage(state: SessionState, messages: WithParts[])
     if (state.tokenUsageEstimate?.key === key) {
         return state.tokenUsageEstimate.value
     }
-    let estimate = 0
-    for (const msg of messages) {
-        estimate += countAllMessageTokens(msg)
-    }
+    const estimate = await countMessageTokensBatch(messages)
     state.tokenUsageEstimate = { key, value: estimate }
     return estimate
 }
 
-function estimateCurrentMessageTokenUsage(state: SessionState, messages: WithParts[]): number {
-    let total = 0
-
-    for (const msg of messages) {
-        if (
-            state.lastCompaction > 0 &&
-            (msg.info.time.created < state.lastCompaction ||
-                (msg.info.summary === true && msg.info.time.created === state.lastCompaction))
-        ) {
-            continue
-        }
-
-        total += countAllMessageTokens(msg)
-    }
-
-    return total
+async function estimateCurrentMessageTokenUsage(
+    state: SessionState,
+    messages: WithParts[],
+): Promise<number> {
+    const live = messages.filter(
+        (msg) =>
+            !(
+                state.lastCompaction > 0 &&
+                (msg.info.time.created < state.lastCompaction ||
+                    (msg.info.summary === true && msg.info.time.created === state.lastCompaction))
+            ),
+    )
+    return countMessageTokensBatch(live)
 }
 
 export function getCurrentParams(
@@ -195,5 +189,19 @@ export async function countAllMessageTokens(msg: WithParts): Promise<number> {
         }
     }
     if (texts.length === 0) return 0
+    return estimateTokensBatch(texts)
+}
+
+/** Counts a whole session's messages in one child round-trip (counting each part separately
+ *  would pay the spawn/handshake cost per message). */
+async function countMessageTokensBatch(messages: WithParts[]): Promise<number> {
+    const texts: string[] = []
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "text") texts.push(part.text)
+            else texts.push(...extractToolContent(part))
+        }
+    }
     return estimateTokensBatch(texts)
 }

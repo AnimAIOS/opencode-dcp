@@ -83,11 +83,11 @@ function buildMessages(inputTokens: number): WithParts[] {
     ]
 }
 
-function limitsFor(modelContextLimit: number | undefined, tokens: number) {
+async function limitsFor(modelContextLimit: number | undefined, tokens: number) {
     const state = createSessionState("ses_context_limit_defaults")
     state.modelContextLimit = modelContextLimit
-    return isContextOverLimits(
-        percentageConfig("70%", "35%"),
+    return await isContextOverLimits(
+        percentageConfig("85%", "60%"),
         state,
         "opencode-go",
         "big-window",
@@ -95,40 +95,45 @@ function limitsFor(modelContextLimit: number | undefined, tokens: number) {
     )
 }
 
-test("shipped default limits are percentages, not absolute token budgets", () => {
+test("shipped default limits are percentages, not absolute token budgets", async () => {
     const schema = JSON.parse(readFileSync(join(repoRoot, "dcp.schema.json"), "utf-8"))
     const compress = schema.properties.compress.properties
 
-    assert.equal(compress.maxContextLimit.default, "70%")
-    assert.equal(compress.minContextLimit.default, "35%")
-    assert.equal(schema.properties.compress.default.maxContextLimit, "70%")
-    assert.equal(schema.properties.compress.default.minContextLimit, "35%")
+    assert.equal(compress.maxContextLimit.default, "85%")
+    assert.equal(compress.minContextLimit.default, "60%")
+    assert.equal(schema.properties.compress.default.maxContextLimit, "85%")
+    assert.equal(schema.properties.compress.default.minContextLimit, "60%")
 
     const configSource = readFileSync(join(repoRoot, "lib", "config.ts"), "utf-8")
-    assert.match(configSource, /maxContextLimit: "70%",/)
-    assert.match(configSource, /minContextLimit: "35%",/)
+    assert.match(configSource, /maxContextLimit: "85%",/)
+    assert.match(configSource, /minContextLimit: "60%",/)
 })
 
-test("percentage defaults stay quiet well past 100k on a 1M window", () => {
-    const at250k = limitsFor(1_000_000, 250_000)
+test("percentage defaults stay quiet well past 100k on a 1M window", async () => {
+    // Fork defaults: max 85%, min 60%.
+    const at250k = await limitsFor(1_000_000, 250_000)
     assert.equal(at250k.overMaxLimit, false)
     assert.equal(at250k.overMinLimit, false)
 
-    const at750k = limitsFor(1_000_000, 750_000)
-    assert.equal(at750k.overMaxLimit, true)
+    const at750k = await limitsFor(1_000_000, 750_000)
+    assert.equal(at750k.overMaxLimit, false)
     assert.equal(at750k.overMinLimit, true)
+
+    const at900k = await limitsFor(1_000_000, 900_000)
+    assert.equal(at900k.overMaxLimit, true)
 })
 
-test("percentage defaults keep the historical thresholds on a 128k window", () => {
-    const at80k = limitsFor(128_000, 80_000)
+test("percentage defaults keep the historical thresholds on a 128k window", async () => {
+    const at80k = await limitsFor(128_000, 80_000)
     assert.equal(at80k.overMaxLimit, false)
     assert.equal(at80k.overMinLimit, true)
 
-    const at95k = limitsFor(128_000, 95_000)
-    assert.equal(at95k.overMaxLimit, true)
+    const at95k = await limitsFor(128_000, 95_000)
+    assert.equal(at95k.overMaxLimit, false)
+    assert.equal(at95k.overMinLimit, true)
 })
 
-test("percentage defaults fail open when the model window is unknown", () => {
-    const unknown = limitsFor(undefined, 500_000)
+test("percentage defaults fail open when the model window is unknown", async () => {
+    const unknown = await limitsFor(undefined, 500_000)
     assert.equal(unknown.overMaxLimit, false)
 })

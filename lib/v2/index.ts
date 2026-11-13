@@ -320,7 +320,7 @@ export async function setup(ctx: Plugin.Context) {
                 )
                 const priorities = await buildPriorityMap(config, state, view.messages)
                 prompts.reload()
-                injectCompressNudges(
+                await injectCompressNudges(
                     state,
                     config,
                     logger,
@@ -354,7 +354,7 @@ export async function setup(ctx: Plugin.Context) {
                 logger.debug("V2 hook applied", {
                     sessionID: event.sessionID,
                     kind,
-                    tokenUsage: getCurrentTokenUsage(state, view.messages),
+                    tokenUsage: await getCurrentTokenUsage(state, view.messages),
                     blocks: state.prune.messages.blocksById.size,
                     pruneTools: state.prune.tools.size,
                     compressPermission: state.compressPermission,

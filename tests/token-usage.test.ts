@@ -206,15 +206,15 @@ function createActiveBlock(
     }
 }
 
-test("getCurrentTokenUsage returns 0 until a fresh assistant follows compaction", () => {
+test("getCurrentTokenUsage returns 0 until a fresh assistant follows compaction", async () => {
     const messages = buildCompactedMessages()
     const state = createSessionState()
     state.lastCompaction = 2
 
-    assert.equal(getCurrentTokenUsage(state, messages), 0)
+    assert.equal(await getCurrentTokenUsage(state, messages), 0)
 })
 
-test("getCurrentTokenUsage falls back to a content estimate when no assistant reports tokens", () => {
+test("getCurrentTokenUsage falls back to a content estimate when no assistant reports tokens", async () => {
     // v2 storage shapes can omit per-assistant token accounting entirely.
     // Without the fallback the nudge thresholds never trip and DCP never
     // compresses (the "v2 never compresses" symptom).
@@ -246,25 +246,29 @@ test("getCurrentTokenUsage falls back to a content estimate when no assistant re
         },
     ]
 
-    const usage = getCurrentTokenUsage(state, messages)
+    const usage = await getCurrentTokenUsage(state, messages)
     assert.ok(usage > 0, "fallback must produce a positive estimate")
     // Memoized per message tail: same input, same estimate without recount.
-    assert.equal(getCurrentTokenUsage(state, messages), usage)
-    // A host that does report tokens must still take priority.
+    assert.equal(await getCurrentTokenUsage(state, messages), usage)
+    // A host that does report tokens wins: getCurrentTokenUsage takes the larger of the report
+    // and the content estimate, so the report must exceed the estimate to be observable.
     const reported = structuredClone(messages)
-    ;(reported[1].info as any).tokens = { output: 42, input: 7 }
-    assert.equal(getCurrentTokenUsage(state, reported), 49)
+    ;(reported[1].info as WithParts["info"] & { tokens?: unknown }).tokens = {
+        output: 42,
+        input: 1_000_000,
+    }
+    assert.equal(await getCurrentTokenUsage(state, reported), 1_000_042)
 })
 
-test("isContextOverLimits ignores stale summary totals and resumes with fresh reported totals", () => {
+test("isContextOverLimits ignores stale summary totals and resumes with fresh reported totals", async () => {
     const messages = buildCompactedMessages()
     const state = createSessionState()
     state.lastCompaction = 2
 
     const staleAssistantTotal = 86000 + 1200 + 300 + 5000
-    assert.equal(getCurrentTokenUsage(state, messages), 0)
+    assert.equal(await getCurrentTokenUsage(state, messages), 0)
 
-    const underLimit = isContextOverLimits(
+    const underLimit = await isContextOverLimits(
         buildConfig(staleAssistantTotal - 1, 1),
         state,
         undefined,
@@ -278,9 +282,9 @@ test("isContextOverLimits ignores stale summary totals and resumes with fresh re
     messages.push(buildPostCompactionAssistantMessage())
     const freshReportedTotal = 2400 + 600 + 150 + 300
 
-    assert.equal(getCurrentTokenUsage(state, messages), freshReportedTotal)
+    assert.equal(await getCurrentTokenUsage(state, messages), freshReportedTotal)
 
-    const overLimit = isContextOverLimits(
+    const overLimit = await isContextOverLimits(
         buildConfig(freshReportedTotal - 1, 1),
         state,
         undefined,
@@ -291,7 +295,7 @@ test("isContextOverLimits ignores stale summary totals and resumes with fresh re
     assert.equal(overLimit.overMaxLimit, true)
 })
 
-test("isContextOverLimits extends the max threshold by active summary tokens", () => {
+test("isContextOverLimits extends the max threshold by active summary tokens", async () => {
     const messages = buildCompactedMessages()
     messages.push(buildPostCompactionAssistantMessage())
 
@@ -304,7 +308,7 @@ test("isContextOverLimits extends the max threshold by active summary tokens", (
 
     const freshReportedTotal = 2400 + 600 + 150 + 300
 
-    const underExtendedLimit = isContextOverLimits(
+    const underExtendedLimit = await isContextOverLimits(
         buildConfig(freshReportedTotal - 1, 1),
         state,
         undefined,
@@ -314,7 +318,7 @@ test("isContextOverLimits extends the max threshold by active summary tokens", (
 
     assert.equal(underExtendedLimit.overMaxLimit, false)
 
-    const overExtendedLimit = isContextOverLimits(
+    const overExtendedLimit = await isContextOverLimits(
         buildConfig(freshReportedTotal - 1001, 1),
         state,
         undefined,
@@ -325,7 +329,7 @@ test("isContextOverLimits extends the max threshold by active summary tokens", (
     assert.equal(overExtendedLimit.overMaxLimit, true)
 })
 
-test("isContextOverLimits accounts for context growth after latest assistant report", () => {
+test("isContextOverLimits accounts for context growth after latest assistant report", async () => {
     const sessionID = "ses_context_growth_after_report"
     const reportedTotal = 1000 + 100 + 50 + 25
     const messages: WithParts[] = [
@@ -368,9 +372,9 @@ test("isContextOverLimits accounts for context growth after latest assistant rep
     ]
     const state = createSessionState()
 
-    assert.ok(getCurrentTokenUsage(state, messages) > reportedTotal)
+    assert.ok((await getCurrentTokenUsage(state, messages)) > reportedTotal)
 
-    const overLimit = isContextOverLimits(
+    const overLimit = await isContextOverLimits(
         buildConfig(reportedTotal + 1, 1),
         state,
         undefined,
@@ -381,7 +385,7 @@ test("isContextOverLimits accounts for context growth after latest assistant rep
     assert.equal(overLimit.overMaxLimit, true)
 })
 
-test("isContextOverLimits does not extend the max threshold when summaryBuffer is disabled", () => {
+test("isContextOverLimits does not extend the max threshold when summaryBuffer is disabled", async () => {
     const messages = buildCompactedMessages()
     messages.push(buildPostCompactionAssistantMessage())
 
@@ -396,12 +400,12 @@ test("isContextOverLimits does not extend the max threshold when summaryBuffer i
     const config = buildConfig(freshReportedTotal - 1, 1)
     config.compress.summaryBuffer = false
 
-    const overLimit = isContextOverLimits(config, state, undefined, undefined, messages)
+    const overLimit = await isContextOverLimits(config, state, undefined, undefined, messages)
 
     assert.equal(overLimit.overMaxLimit, true)
 })
 
-test("isContextOverLimits skips min threshold when modelContextLimit is unknown", () => {
+test("isContextOverLimits skips min threshold when modelContextLimit is unknown", async () => {
     // 回归：modelContextLimit 未缓存（如重启后第一轮）时，
     // 修复前 overMinLimit 无条件 true（每轮注入压缩提醒）；
     // 修复后应跳过判定，避免 1M 模型上 300K 正常上下文被误判。
@@ -410,12 +414,12 @@ test("isContextOverLimits skips min threshold when modelContextLimit is unknown"
     const state = createSessionState() // modelContextLimit = undefined
 
     const pctConfig = buildConfig("85%", "60%")
-    const result = isContextOverLimits(pctConfig, state, undefined, undefined, messages)
+    const result = await isContextOverLimits(pctConfig, state, undefined, undefined, messages)
     assert.equal(result.overMinLimit, false)
     assert.equal(result.overMaxLimit, false)
 })
 
-test("isContextOverLimits does not force compression for large-but-normal context when limit is unknown", () => {
+test("isContextOverLimits does not force compression for large-but-normal context when limit is unknown", async () => {
     // 关键回归：1M 模型上 300K 上下文（30%）在 modelContextLimit 未知时
     // 绝不能触发强制压缩警告（修复前 min 侧 fallback 误判导致误压缩）。
     const messages = buildCompactedMessages()
@@ -431,7 +435,7 @@ test("isContextOverLimits does not force compression for large-but-normal contex
     }
 
     const pctConfig = buildConfig("85%", "60%")
-    const result = isContextOverLimits(pctConfig, state, undefined, undefined, messages)
+    const result = await isContextOverLimits(pctConfig, state, undefined, undefined, messages)
     assert.equal(result.overMaxLimit, false)
     assert.equal(result.overMinLimit, false)
 })

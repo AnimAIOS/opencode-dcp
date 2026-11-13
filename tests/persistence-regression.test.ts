@@ -318,7 +318,7 @@ test("duplicate tool outputs are marked for pruning on the request path and pers
     const state = createSessionState()
     await ensureSessionInitialized(client, state, sessionID, logger, rawMessages, false)
     assignMessageRefs(state, rawMessages)
-    syncToolCache(state, config, logger, rawMessages)
+    await syncToolCache(state, config, logger, rawMessages)
     buildToolIdList(state, rawMessages)
     deduplicate(state, logger, config, rawMessages)
 
