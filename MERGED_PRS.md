@@ -9,6 +9,7 @@
 | #627 | Opencode v2 compatibility improvements | da1658b | resolved conflicts |
 | #607 | fix: persist modelContextLimit, skip min-threshold when unknown, percentage defaults, keep blocks active across restarts | dd0ad8f | resolved conflicts; fork 85%/60% defaults kept |
 | #597 | fix: preserve per-round subagent task results on resume | cf5e728 | |
+| #589 | fix: reconstruct compression state after fork and compaction | 67a1e3a | conflicts in hooks.ts/state.ts/types.ts resolved; kept persistedLoadFailed guard + tokenUsageEstimate + needsReconstruction |
 | #582 | fix: account for current context growth in token usage | a52cee4 | |
 | #564 | fix: stale stats and incorrect token breakdown after Compaction | d9af28e | |
 | #648 | chore(scripts): remove unreferenced Python analysis CLIs | 0064525 | |
@@ -28,6 +29,5 @@ Not merged:
 - #651 — peer-dependency move breaks installed import paths (@opencode/ai/schema/messages)
 - #656 — conflict surface unmanageable (34 files, ~104 conflicts)
 - #621 — conflict surface unmanageable (48 files, ~15 conflicts)
-- #589 — not an ancestor of HEAD (pr-589 tip not merged into this branch; verified via git merge-base --is-ancestor exit 1)
 - #530 — open upstream (not merged)
 - #525 — upstream draft (not merged)
