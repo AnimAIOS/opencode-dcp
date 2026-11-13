@@ -232,6 +232,15 @@ export async function loadSessionState(
     }
 }
 
+export async function deleteSessionState(sessionId: string): Promise<void> {
+    const filePath = getSessionFilePath(sessionId)
+    try {
+        await fs.unlink(filePath)
+    } catch (error: any) {
+        if (error?.code !== "ENOENT") throw error
+    }
+}
+
 function emptyPersistedState(manualMode: boolean): PersistedSessionState {
     return {
         manualMode,
@@ -273,9 +282,6 @@ export async function saveManualModeSetting(
     logger: Logger,
 ): Promise<void> {
     const existing = await loadSessionState(sessionId, logger)
-    // Same guard as saveSessionState: a null load with the file present means
-    // the on-disk state is unreadable. Falling back to a fresh state here
-    // would destroy the compression blocks with a manual-mode-only stub.
     if (!existing && sessionStateFileExists(sessionId)) {
         logger.warn("Refusing to overwrite unreadable state file", {
             sessionId,
