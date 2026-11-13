@@ -210,7 +210,7 @@ export function createChatMessageTransformHandler(
             }
 
             if (state.needsReconstruction) {
-                const reconstructed = reconstructFromHistory(state, logger, workingMessages)
+                const reconstructed = await reconstructFromHistory(state, logger, workingMessages)
                 state.needsReconstruction = false
                 if (reconstructed > 0) {
                     logger.info("Compression state reconstructed from conversation history", {

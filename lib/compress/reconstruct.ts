@@ -74,11 +74,11 @@ export function hasCompressHistory(messages: WithParts[]): boolean {
     return false
 }
 
-export function reconstructFromHistory(
+export async function reconstructFromHistory(
     state: SessionState,
     logger: Logger,
     messages: WithParts[],
-): number {
+): Promise<number> {
     const compressResults = extractCompressResults(messages)
     if (compressResults.length === 0) {
         return 0
@@ -107,7 +107,7 @@ export function reconstructFromHistory(
                 const storedSummary = wrapCompressedSummary(blockId, range.summary)
                 const summaryTokens = countTokens(storedSummary)
 
-                const consumedBlockIds = selection.requiredBlockIds
+                const consumedBlockIds = (await selection).requiredBlockIds
 
                 applyCompressionState(
                     state,
