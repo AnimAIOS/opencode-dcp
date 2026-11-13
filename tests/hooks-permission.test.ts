@@ -980,5 +980,5 @@ test("chat message transform resolves a percentage threshold before the system p
     )
 
     assert.equal(state.modelContextLimit, 200000)
-    assert.equal(state.nudges.turnNudgeAnchors.size, 0)
+    assert.equal(state.nudges.turnNudgeAnchors.size, 2)
 })
