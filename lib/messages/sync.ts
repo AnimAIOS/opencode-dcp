@@ -53,6 +53,36 @@ export const syncCompressionBlocks = (
     const orderedBlocks = Array.from(messagesState.blocksById.values()).sort(sortBlocksByCreation)
 
     for (const block of orderedBlocks) {
+        const hasOriginMessage =
+            typeof block.compressMessageId === "string" &&
+            block.compressMessageId.length > 0 &&
+            messageIds.has(block.compressMessageId)
+
+        if (!hasOriginMessage) {
+            const hasAnchorMessage =
+                typeof block.anchorMessageId === "string" &&
+                block.anchorMessageId.length > 0 &&
+                messageIds.has(block.anchorMessageId)
+
+            if (!hasAnchorMessage) {
+                block.active = false
+                block.deactivatedAt = now
+                block.deactivatedByBlockId = undefined
+                missingOriginBlockIds.push(block.blockId)
+                continue
+            }
+
+            block.active = true
+            block.deactivatedAt = undefined
+            block.deactivatedByBlockId = undefined
+            messagesState.activeBlockIds.add(block.blockId)
+            messagesState.activeByAnchorMessageId.set(block.anchorMessageId, block.blockId)
+            logger.warn("Compress block origin message missing; keeping active via anchor", {
+                blockId: block.blockId,
+            })
+            continue
+        }
+
         if (block.deactivatedByUser) {
             block.active = false
             if (block.deactivatedAt === undefined) {
