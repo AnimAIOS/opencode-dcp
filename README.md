@@ -9,7 +9,7 @@ Automatically reduces token usage in OpenCode by managing conversation context.
 Install from this GitHub repository with the OpenCode CLI:
 
 ```bash
-opencode plugin add github:AnimAIOS/opencode-dynamic-context
+opencode plugin add github:AnimAIOS/opencode-dcp
 ```
 
 This installs the plugin from source and adds it to your global OpenCode config. Restart OpenCode after installation.
@@ -64,7 +64,7 @@ Each level overrides the previous, so project settings take priority over global
 
 ```jsonc
 {
-    "$schema": "https://raw.githubusercontent.com/AnimAIOS/opencode-dynamic-context/master/dcp.schema.json",
+    "$schema": "https://raw.githubusercontent.com/AnimAIOS/opencode-dcp/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
     // Automatically update npm-installed DCP when a newer npm latest is available.
