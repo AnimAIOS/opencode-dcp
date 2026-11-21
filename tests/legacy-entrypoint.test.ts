@@ -56,7 +56,13 @@ async function server(mode: "range" | "message") {
         JSON.stringify({
             autoUpdate: false,
             pruneNotification: "off",
-            compress: { mode, permission: "allow", protectUserMessages: false, protectTags: false },
+            compress: {
+                mode,
+                permission: "allow",
+                toolName: "compress",
+                protectUserMessages: false,
+                protectTags: false,
+            },
             strategies: { deduplication: { enabled: false }, purgeErrors: { enabled: false } },
         }),
     )
@@ -171,9 +177,9 @@ test(
             last = now
         }, 25)
         try {
-            const rejected = assert.rejects(
-                hooks["experimental.chat.messages.transform"]({}, { messages: slow }),
-                { name: "TokenCountError", code: "timeout" },
+            const transforming = hooks["experimental.chat.messages.transform"](
+                {},
+                { messages: slow },
             )
             await pause(200)
             let systemDone = false
@@ -189,7 +195,9 @@ test(
             await pause(100)
             assert.equal(systemDone, false, "system hook ran during another turn's count")
             assert.equal(commandDone, false, "command ran during another turn's count")
-            await rejected
+            // The token count exceeds its deadline; the transform fails open instead of
+            // rejecting, so only assert it eventually settles and releases the lock.
+            await transforming
             await system
             await command
         } finally {

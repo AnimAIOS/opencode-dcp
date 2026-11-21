@@ -40,7 +40,7 @@ Key points about this setup:
   files. The `.tsx` TUI files are render-tested separately by `test:tui`/`test:coverage:tui`
   (bun) and are **not** in these numbers; see [TUI_COVERAGE.md](TUI_COVERAGE.md). The
   `tests/logger` workspace is also exercised by a separate
-  `npm test --workspace=tests/logger` run and is **not** included here.
+  `npm test --prefix tests/logger` run and is **not** included here.
 
 ## Baseline snapshot (before new tests)
 

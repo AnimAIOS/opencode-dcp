@@ -29,12 +29,17 @@ Use Node.js and npm. From your checkout:
 
 ```sh
 npm ci --legacy-peer-deps
-npm run build
+npm ci --prefix tests/logger --legacy-peer-deps
+npm run build:dist
 ```
 
 The install flag allows development against the different OpenTUI peer versions
-used by OpenCode V1 and V2. This also installs the bundled test logger's
-dependencies through the [tests/logger](tests/logger/) npm workspace.
+used by OpenCode V1 and V2. The second command installs the bundled
+[tests/logger](tests/logger/) package's dependencies.
+
+`dist/` is committed to the repository so `opencode plugin add github:...` works
+without a build step. After changing source files, run `npm run build:dist` and
+commit the regenerated `dist/` output along with your changes.
 
 Run the checks relevant to your changes before submitting a pull request:
 

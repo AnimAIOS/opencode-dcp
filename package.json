@@ -3,9 +3,6 @@
     "name": "@tarquinen/opencode-dcp",
     "version": "3.2.0",
     "type": "module",
-    "workspaces": [
-        "tests/logger"
-    ],
     "description": "OpenCode plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
@@ -25,14 +22,14 @@
     },
     "scripts": {
         "clean": "rm -rf dist",
-        "build": "npm run clean && tsup && tsc --emitDeclarationOnly",
+        "build:dist": "npm run clean && tsup && tsc --emitDeclarationOnly",
         "verify:package": "node scripts/verify-package.mjs",
-        "check:package": "npm run build && npm run verify:package",
+        "check:package": "npm run build:dist && npm run verify:package",
         "prepublishOnly": "npm run check:package",
         "dev": "opencode plugin dev",
         "sandbox": "node scripts/sandbox.mjs",
-        "typecheck": "tsc --noEmit && npm run typecheck --workspace=tests/logger",
-        "test": "node --import tsx --test tests/*.test.ts && npm run --silent test:tui && npm test --workspace=tests/logger",
+        "typecheck": "tsc --noEmit && npm run typecheck --prefix tests/logger",
+        "test": "node --import tsx --test tests/*.test.ts && npm run --silent test:tui && npm test --prefix tests/logger",
         "test:tui": "if command -v bun >/dev/null 2>&1; then bun test tests/v2-tui-*.test.tsx; else echo '[dcp] bun not found: TUI render tests skipped'; fi",
         "test:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include='lib/**/*.ts' --test-coverage-include-all --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=85 tests/*.test.ts",
         "test:coverage:tui": "if command -v bun >/dev/null 2>&1; then bun test --coverage tests/v2-tui-*.test.tsx tests/v2-tui-*.test.ts; else echo '[dcp] bun not found: TUI coverage skipped'; fi",

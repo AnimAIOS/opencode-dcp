@@ -2,8 +2,10 @@
 node_modules
 bun.lock
 
-# Build output
+# Build output (root dist/ is committed so GitHub/git installs load without a build step)
 dist/
+!/dist/
+tests/logger/dist/
 *.tgz
 
 # Logs
