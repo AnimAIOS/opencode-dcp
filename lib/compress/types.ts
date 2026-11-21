@@ -1,5 +1,6 @@
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
+import type { BeadsProtection } from "../protected-patterns"
 import type { PromptStore } from "../prompts/store"
 import type { CompressionBlock, CompressionMode, SessionState, WithParts } from "../state"
 
@@ -9,6 +10,8 @@ export interface ToolContext {
     logger: Logger
     config: PluginConfig
     prompts: PromptStore
+    /** Resolved Beads state; undefined means no Beads protection. */
+    beads?: BeadsProtection
 }
 
 export interface CompressRangeEntry {

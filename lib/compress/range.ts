@@ -17,6 +17,7 @@ import {
     appendProtectedTools,
     appendProtectedUserMessages,
 } from "./protected-content"
+import { stripTokenEconomizerManual } from "../integrations"
 import {
     appendMissingBlockSummaries,
     injectBlockPlaceholders,
@@ -105,8 +106,14 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                 let totalCompressedMessages = 0
 
                 for (const plan of resolvedPlans) {
+                    // A copied TE manual would be duplicated in every request's
+                    // system prompt; drop it from the generated summary.
+                    const teSafeSummary =
+                        ctx.config.integrations?.tokenEconomizer === "auto"
+                            ? stripTokenEconomizerManual(plan.entry.summary)
+                            : plan.entry.summary
                     const parsedPlaceholders = parseBlockPlaceholders(
-                        plan.entry.summary,
+                        teSafeSummary,
                         ctx.state.idFormat,
                     )
                     const missingBlockIds = validateSummaryPlaceholders(
@@ -118,7 +125,7 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                     )
 
                     const injected = injectBlockPlaceholders(
-                        plan.entry.summary,
+                        teSafeSummary,
                         parsedPlaceholders,
                         searchContext.summaryByBlockId,
                         plan.selection.startReference,
@@ -139,8 +146,10 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                         searchContext,
                         ctx.state,
                         ctx.config.compress.protectTags,
+                        ctx.beads,
                     )
 
+                    const teActive = ctx.config.integrations?.tokenEconomizer === "auto"
                     const summaryWithTools = await appendProtectedTools(
                         ctx.client,
                         ctx.state,
@@ -150,6 +159,9 @@ export function createCompressRangeTool(ctx: ToolContext): ReturnType<typeof too
                         searchContext,
                         ctx.config.compress.protectedTools,
                         ctx.config.protectedFilePatterns,
+                        ctx.beads,
+                        teActive ? plan.selection.messageIds.length : undefined,
+                        teActive,
                     )
 
                     const completedSummary = appendMissingBlockSummaries(

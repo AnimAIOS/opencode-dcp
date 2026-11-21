@@ -81,6 +81,15 @@ export interface ExperimentalConfig {
     customPrompts: boolean
 }
 
+export type IntegrationMode = "auto" | "off"
+
+export interface IntegrationsConfig {
+    tokenEconomizer: IntegrationMode
+    beads: IntegrationMode
+    /** null = resolve from the workspace metadata. */
+    beadsPrefix: string | null
+}
+
 export interface PluginConfig {
     enabled: boolean
     autoUpdate: boolean
@@ -91,6 +100,7 @@ export interface PluginConfig {
     manualMode: ManualModeConfig
     turnProtection: TurnProtection
     experimental: ExperimentalConfig
+    integrations: IntegrationsConfig
     protectedFilePatterns: string[]
     compress: CompressConfig
     strategies: {
@@ -130,6 +140,10 @@ export const VALID_CONFIG_KEYS = new Set([
     "experimental",
     "experimental.allowSubAgents",
     "experimental.customPrompts",
+    "integrations",
+    "integrations.tokenEconomizer",
+    "integrations.beads",
+    "integrations.beadsPrefix",
     "protectedFilePatterns",
     "commands",
     "commands.enabled",
@@ -308,6 +322,40 @@ export function validateConfigTypes(config: Record<string, any>): ValidationErro
                     key: "experimental.customPrompts",
                     expected: "boolean",
                     actual: typeof experimental.customPrompts,
+                })
+            }
+        }
+    }
+
+    const integrations = config.integrations
+    if (integrations !== undefined) {
+        if (
+            typeof integrations !== "object" ||
+            integrations === null ||
+            Array.isArray(integrations)
+        ) {
+            errors.push({
+                key: "integrations",
+                expected: "object",
+                actual: typeof integrations,
+            })
+        } else {
+            for (const key of ["tokenEconomizer", "beads"] as const) {
+                const value = integrations[key]
+                if (value !== undefined && value !== "auto" && value !== "off") {
+                    errors.push({
+                        key: `integrations.${key}`,
+                        expected: '"auto" | "off"',
+                        actual: JSON.stringify(value),
+                    })
+                }
+            }
+            const prefix = integrations.beadsPrefix
+            if (prefix !== undefined && prefix !== null && typeof prefix !== "string") {
+                errors.push({
+                    key: "integrations.beadsPrefix",
+                    expected: "string | null",
+                    actual: JSON.stringify(prefix),
                 })
             }
         }
@@ -714,6 +762,11 @@ const defaultConfig: PluginConfig = {
         allowSubAgents: false,
         customPrompts: false,
     },
+    integrations: {
+        tokenEconomizer: "off",
+        beads: "off",
+        beadsPrefix: null,
+    },
     protectedFilePatterns: [],
     compress: {
         mode: "range",
@@ -939,6 +992,20 @@ function mergeExperimental(
     }
 }
 
+function mergeIntegrations(
+    base: PluginConfig["integrations"],
+    override?: Partial<PluginConfig["integrations"]>,
+): PluginConfig["integrations"] {
+    if (override === undefined) return base
+
+    return {
+        tokenEconomizer: override.tokenEconomizer ?? base.tokenEconomizer,
+        beads: override.beads ?? base.beads,
+        // `null` is a meaningful "detect" value, not an absent override.
+        beadsPrefix: override.beadsPrefix !== undefined ? override.beadsPrefix : base.beadsPrefix,
+    }
+}
+
 function deepCloneConfig(config: PluginConfig): PluginConfig {
     return {
         ...config,
@@ -952,6 +1019,7 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
         },
         turnProtection: { ...config.turnProtection },
         experimental: { ...config.experimental },
+        integrations: { ...config.integrations },
         protectedFilePatterns: [...config.protectedFilePatterns],
         compress: {
             ...config.compress,
@@ -986,6 +1054,7 @@ function mergeLayer(config: PluginConfig, data: Record<string, any>): PluginConf
             turns: data.turnProtection?.turns ?? config.turnProtection.turns,
         },
         experimental: mergeExperimental(config.experimental, data.experimental as any),
+        integrations: mergeIntegrations(config.integrations, data.integrations as any),
         protectedFilePatterns: [
             ...new Set([...config.protectedFilePatterns, ...(data.protectedFilePatterns ?? [])]),
         ],

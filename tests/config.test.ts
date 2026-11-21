@@ -613,3 +613,89 @@ describe("getConfig", () => {
         assert.deepEqual(second.compress.modelMaxLimits, {})
     })
 })
+
+describe("integrations config", () => {
+    test("integrations keys are recognised", () => {
+        for (const key of [
+            "integrations",
+            "integrations.tokenEconomizer",
+            "integrations.beads",
+            "integrations.beadsPrefix",
+        ]) {
+            assert.ok(VALID_CONFIG_KEYS.has(key), key)
+        }
+        assert.deepEqual(
+            getInvalidConfigKeys({ integrations: { tokenEconomizer: "auto", bogus: true } }),
+            ["integrations.bogus"],
+        )
+    })
+
+    test("valid integrations values pass validation", () => {
+        assert.deepEqual(
+            validateConfigTypes({
+                integrations: { tokenEconomizer: "auto", beads: "off", beadsPrefix: "acme" },
+            }),
+            [],
+        )
+        assert.deepEqual(
+            validateConfigTypes({
+                integrations: { tokenEconomizer: "off", beads: "auto", beadsPrefix: null },
+            }),
+            [],
+        )
+        assert.deepEqual(validateConfigTypes({}), [])
+    })
+
+    test("invalid integrations values and shapes are reported", () => {
+        for (const bad of [null, [], "auto", 7]) {
+            assert.deepEqual(validateConfigTypes({ integrations: bad }), [
+                { key: "integrations", expected: "object", actual: typeof bad },
+            ])
+        }
+        assert.deepEqual(
+            validateConfigTypes({
+                integrations: {
+                    tokenEconomizer: "always",
+                    beads: 1,
+                    beadsPrefix: 42,
+                },
+            }).map((error) => error.key),
+            ["integrations.tokenEconomizer", "integrations.beads", "integrations.beadsPrefix"],
+        )
+    })
+
+    test("no integrations block means both integrations are off", () => {
+        clearGlobalConfig()
+        const { ctx } = makeCtx()
+        const config = getConfig(ctx)
+        assert.deepEqual(config.integrations, {
+            tokenEconomizer: "off",
+            beads: "off",
+            beadsPrefix: null,
+        })
+    })
+
+    test("integrations overrides merge across layers and preserve explicit null", () => {
+        writeGlobalConfig(
+            JSON.stringify({
+                integrations: { tokenEconomizer: "auto", beadsPrefix: "global-prefix" },
+            }),
+        )
+        const { ctx } = makeCtx()
+        const config = getConfig(ctx)
+        assert.deepEqual(config.integrations, {
+            tokenEconomizer: "auto",
+            beads: "off",
+            beadsPrefix: "global-prefix",
+        })
+    })
+
+    test("integrations are deep-cloned so callers cannot mutate the defaults", () => {
+        clearGlobalConfig()
+        const { ctx } = makeCtx()
+        const first = getConfig(ctx)
+        first.integrations.beadsPrefix = "leaked"
+        const second = getConfig(ctx)
+        assert.equal(second.integrations.beadsPrefix, null)
+    })
+})

@@ -47,6 +47,7 @@ import {
 import { reconstructFromHistory } from "./compress/reconstruct"
 import { cacheSystemPromptTokens } from "./ui/utils"
 import { getModelInfo } from "./messages/inject/utils"
+import { placeSystemPrompt } from "./integrations"
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -114,11 +115,13 @@ export function createSystemPromptHandler(
             state.isSubAgent && config.experimental.allowSubAgents,
             compressToolName(config),
         )
-        if (output.system.length > 0) {
-            output.system[output.system.length - 1] += "\n\n" + newPrompt
-        } else {
-            output.system.push(newPrompt)
-        }
+        // A detected TE manual is a named system part: leave it byte-identical
+        // and append DCP's own prompt as a new part after it. With TE off or
+        // absent this is the original append-to-last behaviour.
+        const placement = placeSystemPrompt(output.system, newPrompt, {
+            tokenEconomizer: config.integrations?.tokenEconomizer === "auto",
+        })
+        output.system.splice(0, output.system.length, ...placement.system)
     }
 }
 
@@ -146,6 +149,8 @@ export function createChatMessageTransformHandler(
     config: PluginConfig,
     prompts: PromptStore,
     hostPermissions: HostPermissionSnapshot,
+    workingDirectory?: string,
+    beads?: { active: boolean; prefix: string | null },
 ) {
     return async (input: {}, output: { messages: WithParts[] }) => {
         // Fail-open: catch transform failures so DCP bugs do not abort the session.
@@ -191,7 +196,10 @@ export function createChatMessageTransformHandler(
                 workingMessages,
                 config.experimental.allowSubAgents,
             )
-            const compressionPriorities = await buildPriorityMap(config, state, workingMessages)
+            const compressionPriorities = await buildPriorityMap(config, state, workingMessages, {
+                directory: workingDirectory ?? process.cwd(),
+                beads,
+            })
             prompts.reload()
             await injectCompressNudges(
                 state,
@@ -236,6 +244,7 @@ export function createCommandExecuteHandler(
     config: PluginConfig,
     workingDirectory: string,
     hostPermissions: HostPermissionSnapshot,
+    beads?: { active: boolean; prefix: string | null },
 ) {
     return async (
         input: { command: string; sessionID: string; arguments: string },
@@ -296,6 +305,7 @@ export function createCommandExecuteHandler(
                     ...commandCtx,
                     args: subArgs,
                     workingDirectory,
+                    ...(beads ? { beads } : {}),
                 })
                 return
             }

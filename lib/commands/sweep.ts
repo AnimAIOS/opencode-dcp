@@ -18,6 +18,12 @@ import { buildToolIdList } from "../messages/utils"
 import { saveSessionState } from "../state/persistence"
 import { isMessageCompacted } from "../state/utils"
 import { isToolProtected } from "../protected-patterns"
+import {
+    DEFAULT_BD_TIMEOUT_MS,
+    defaultBdRunner,
+    resolveIntegrations,
+    type BdCommandRunner,
+} from "../integrations"
 import { syncToolCache } from "../state/tool-cache"
 
 export interface SweepCommandContext {
@@ -28,7 +34,18 @@ export interface SweepCommandContext {
     sessionId: string
     messages: WithParts[]
     args: string[]
-    workingDirectory: string
+    workingDirectory?: string
+    directory?: string
+    beads?: { active: boolean; prefix: string | null }
+    beadsState?: { active: boolean; prefix: string | null }
+    beadsProtection?: { active: boolean; prefix: string | null }
+    run?: BdCommandRunner
+    bdRunner?: BdCommandRunner
+    runner?: BdCommandRunner
+    timeoutMs?: number
+    timeout?: number
+    bdTimeoutMs?: number
+    systemParts?: readonly string[]
 }
 
 function findLastUserMessageIndex(messages: WithParts[]): number {
@@ -123,10 +140,43 @@ function formatSweepMessage(
 }
 
 export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void> {
-    const { client, state, config, logger, sessionId, messages, args, workingDirectory } = ctx
+    const { client, state, config, logger, sessionId, messages, args } = ctx
+    const workingDirectory = ctx.workingDirectory ?? ctx.directory ?? process.cwd()
+    const beadsOption =
+        ctx.beads ?? ctx.beadsState ?? ctx.beadsProtection
+    const run = ctx.run ?? ctx.bdRunner ?? ctx.runner
+    const timeoutMs = ctx.timeoutMs ?? ctx.timeout ?? ctx.bdTimeoutMs
+    const systemParts = ctx.systemParts
 
     const params = getCurrentParams(state, messages, logger)
     const protectedTools = config.commands.protectedTools
+
+    // Resolve Beads state (read-only, short-timeout, fail-open) so manual sweep
+    // matches automatic compression. A pre-resolved value skips detection.
+    let beadsState: { active: boolean; prefix: string | null } =
+        beadsOption ?? { active: false, prefix: null }
+    const integrationsConfig = (config as any)?.integrations
+    if (beadsOption === undefined) {
+        const cfg =
+            integrationsConfig && typeof integrationsConfig === "object"
+                ? integrationsConfig
+                : { tokenEconomizer: "off", beads: "off", beadsPrefix: null }
+        try {
+            const resolved = await resolveIntegrations({
+                config: cfg,
+                directory: workingDirectory,
+                ...(systemParts ? { systemParts } : {}),
+                ...(run ? { run } : {}),
+                ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+            })
+            beadsState = { active: resolved.beads, prefix: resolved.beadsPrefix }
+        } catch {
+            beadsState = { active: false, prefix: null }
+        }
+    }
+    if (integrationsConfig && integrationsConfig.beads === "off") {
+        beadsState = { active: false, prefix: beadsState.prefix }
+    }
 
     await syncToolCache(state, config, logger, messages)
     buildToolIdList(state, messages)
@@ -179,6 +229,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
                 protectedTools,
                 config.protectedFilePatterns,
                 entry.metadata,
+                beadsState,
             )
         ) {
             logger.debug(`Sweep: skipping protected tool ${entry.tool} (${id})`)
@@ -199,6 +250,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
             protectedTools,
             config.protectedFilePatterns,
             entry.metadata,
+            beadsState,
         )
     }).length
 
