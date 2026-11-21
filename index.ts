@@ -18,6 +18,7 @@ import {
 } from "./lib/hooks"
 import { configureClientAuth, isSecureMode } from "./lib/auth"
 import { startAutoUpdate } from "./lib/update"
+import { resolveIntegrations } from "./lib/integrations"
 import { setup } from "./lib/v2"
 
 const server: Plugin = (async (ctx) => {
@@ -46,12 +47,17 @@ const server: Plugin = (async (ctx) => {
 
     startAutoUpdate(ctx, config.autoUpdate)
 
+    const integrations = await resolveIntegrations({
+        config: config.integrations,
+        directory: ctx.directory,
+    })
     const compressToolContext = {
         client: ctx.client,
         state,
         logger,
         config,
         prompts,
+        beads: { active: integrations.beads, prefix: integrations.beadsPrefix },
     }
 
     // This server shares one state across sessions: handlers that await while mutating it
@@ -63,6 +69,8 @@ const server: Plugin = (async (ctx) => {
         config,
         prompts,
         hostPermissions,
+        ctx.directory,
+        { active: integrations.beads, prefix: integrations.beadsPrefix },
     )
     const executeCommand = createCommandExecuteHandler(
         ctx.client,
@@ -71,6 +79,7 @@ const server: Plugin = (async (ctx) => {
         config,
         ctx.directory,
         hostPermissions,
+        { active: integrations.beads, prefix: integrations.beadsPrefix },
     )
 
     const transformSystem = createSystemPromptHandler(state, logger, config, prompts)

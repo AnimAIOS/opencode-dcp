@@ -986,3 +986,107 @@ test("injectMessageIds skips assistant with empty text part (issue #463)", async
         "empty text part should remain untouched",
     )
 })
+
+test("beads-aware priority boosts messages referencing open beads", async () => {
+    const sessionID = "ses_beads_priority_open"
+    const messages: WithParts[] = [
+        buildMessage("msg-open", "user", sessionID, "Continue work on opencode-dcp-1 please.", 1),
+        buildMessage("msg-closed", "user", sessionID, "Continue work on opencode-dcp-2 please.", 2),
+    ]
+    const state = createSessionState()
+    const config = buildConfig()
+    config.integrations = { tokenEconomizer: "off", beads: "auto", beadsPrefix: null }
+
+    assignMessageRefs(state, messages)
+    const priorities = await buildPriorityMap(config, state, messages, {
+        directory: process.cwd(),
+        beads: { active: true, prefix: "opencode-dcp" },
+        run: async () => JSON.stringify([
+            { id: "opencode-dcp-1", status: "open" },
+            { id: "opencode-dcp-2", status: "closed" },
+        ]),
+    })
+
+    assert.equal(priorities.get("msg-open")?.priority, "high")
+    assert.notEqual(priorities.get("msg-closed")?.priority, "high")
+})
+
+test("beads-aware priority does not boost closed beads", async () => {
+    const sessionID = "ses_beads_priority_closed_only"
+    const messages: WithParts[] = [
+        buildMessage("msg-closed", "user", sessionID, "Done with opencode-dcp-9.", 1),
+    ]
+    const state = createSessionState()
+    const config = buildConfig()
+    config.integrations = { tokenEconomizer: "off", beads: "auto", beadsPrefix: null }
+
+    assignMessageRefs(state, messages)
+    const priorities = await buildPriorityMap(config, state, messages, {
+        directory: process.cwd(),
+        beads: { active: true, prefix: "opencode-dcp" },
+        run: async () => JSON.stringify([{ id: "opencode-dcp-9", status: "closed" }]),
+    })
+
+    assert.notEqual(priorities.get("msg-closed")?.priority, "high")
+})
+
+test("beads-aware priority is off when beads is off", async () => {
+    const sessionID = "ses_beads_priority_off"
+    const messages: WithParts[] = [
+        buildMessage("msg-open", "user", sessionID, "Continue work on opencode-dcp-1 please.", 1),
+    ]
+    const state = createSessionState()
+    const config = buildConfig()
+    config.integrations = { tokenEconomizer: "off", beads: "off", beadsPrefix: null }
+
+    assignMessageRefs(state, messages)
+    const priorities = await buildPriorityMap(config, state, messages, {
+        directory: process.cwd(),
+        beads: { active: true, prefix: "opencode-dcp" },
+        run: async () => JSON.stringify([{ id: "opencode-dcp-1", status: "open" }]),
+    })
+
+    assert.notEqual(priorities.get("msg-open")?.priority, "high")
+})
+
+test("beads-aware priority is off when beads is not detected", async () => {
+    const sessionID = "ses_beads_priority_not_detected"
+    const messages: WithParts[] = [
+        buildMessage("msg-open", "user", sessionID, "Continue work on opencode-dcp-1 please.", 1),
+    ]
+    const state = createSessionState()
+    const config = buildConfig()
+    config.integrations = { tokenEconomizer: "off", beads: "auto", beadsPrefix: null }
+
+    assignMessageRefs(state, messages)
+    // No beads option -> resolveIntegrations runs detectBeads with run that throws => not detected.
+    const priorities = await buildPriorityMap(config, state, messages, {
+        directory: process.cwd(),
+        run: async () => {
+            throw new Error("bd unavailable")
+        },
+    })
+
+    assert.notEqual(priorities.get("msg-open")?.priority, "high")
+})
+
+test("beads-aware priority fails open when the CLI is unavailable", async () => {
+    const sessionID = "ses_beads_priority_failopen"
+    const messages: WithParts[] = [
+        buildMessage("msg-open", "user", sessionID, "Continue work on opencode-dcp-1 please.", 1),
+    ]
+    const state = createSessionState()
+    const config = buildConfig()
+    config.integrations = { tokenEconomizer: "off", beads: "auto", beadsPrefix: null }
+
+    assignMessageRefs(state, messages)
+    const priorities = await buildPriorityMap(config, state, messages, {
+        directory: process.cwd(),
+        beads: { active: true, prefix: "opencode-dcp" },
+        run: async () => {
+            throw new Error("bd unavailable")
+        },
+    })
+
+    assert.notEqual(priorities.get("msg-open")?.priority, "high")
+})

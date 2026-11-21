@@ -298,3 +298,84 @@ test("compacted messages after the last user message are not swept", async () =>
     assert.deepEqual([...state.prune.tools.keys()], ["call-new"])
     assert.match(textOf(sent), /Swept 1 tool\(s\) since the previous user message\./)
 })
+
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+test("manual sweep does not prune a bash tool output whose command contains a bd subcommand when Beads is active", async () => {
+    stubTokenCount()
+    const { client } = makeClient()
+    const state = createSessionState()
+    const dir = mkdtempSync(join(tmpdir(), "dcp-sweep-beads-active-"))
+    mkdirSync(join(dir, ".beads"))
+    const run = async () => JSON.stringify({ prefix: "opencode-dcp" })
+    const config = buildConfig()
+    config.integrations = { tokenEconomizer: "off", beads: "auto", beadsPrefix: null }
+    const logger = new Logger(false)
+
+    await handleSweepCommand({
+        client,
+        state,
+        config,
+        logger,
+        sessionId: SESSION_ID,
+        messages: [
+            userMessage("msg-user", 1),
+            toolMessage("msg-a", 2, [
+                toolPart("msg-a", "call-bd", "bash", { command: "bd show opencode-dcp-39l.7" }),
+            ]),
+        ],
+        args: [],
+        workingDirectory: dir,
+        run,
+    })
+
+    assert.equal(state.prune.tools.has("call-bd"), false)
+    rmSync(dir, { recursive: true, force: true })
+})
+
+test("manual sweep is a no-op for bd bash outputs when Beads is off or not detected", async () => {
+    for (const mode of ["off", "not-detected"] as const) {
+        stubTokenCount()
+        const { client } = makeClient()
+        const state = createSessionState()
+        const dir = mkdtempSync(join(tmpdir(), "dcp-sweep-beads-inactive-"))
+        if (mode === "not-detected") mkdirSync(join(dir, ".beads"))
+        const run =
+            mode === "not-detected"
+                ? async () => {
+                      throw new Error("bd unavailable")
+                  }
+                : async () => JSON.stringify({ prefix: "opencode-dcp" })
+        const config = buildConfig()
+        config.integrations = {
+            tokenEconomizer: "off",
+            beads: mode === "off" ? "off" : "auto",
+            beadsPrefix: null,
+        }
+        const logger = new Logger(false)
+
+        await handleSweepCommand({
+            client,
+            state,
+            config,
+            logger,
+            sessionId: SESSION_ID,
+            messages: [
+                userMessage("msg-user", 1),
+                toolMessage("msg-a", 2, [
+                    toolPart("msg-a", "call-bd", "bash", { command: "bd show opencode-dcp-39l.7" }),
+                ]),
+            ],
+            args: [],
+            workingDirectory: dir,
+            run,
+        })
+
+        // When inactive, the bd bash output is not protected by Beads; since no
+        // other protection applies it gets swept.
+        assert.equal(state.prune.tools.has("call-bd"), true)
+        rmSync(dir, { recursive: true, force: true })
+    }
+})

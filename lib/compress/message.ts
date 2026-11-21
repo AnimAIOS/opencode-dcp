@@ -20,6 +20,7 @@ import {
 } from "./pipeline"
 import { exclusive } from "../state"
 import { appendProtectedPromptInfo, appendProtectedTools } from "./protected-content"
+import { stripTokenEconomizerManual } from "../integrations"
 import {
     allocateBlockId,
     allocateRunId,
@@ -99,14 +100,22 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                 }> = []
 
                 for (const plan of plans) {
+                    // A TE manual already lives in every request's system prompt;
+                    // drop any copy the model put in the summary to avoid duplication.
+                    const teSafeSummary =
+                        ctx.config.integrations?.tokenEconomizer === "auto"
+                            ? stripTokenEconomizerManual(plan.entry.summary)
+                            : plan.entry.summary
                     const summaryWithPromptInfo = appendProtectedPromptInfo(
-                        plan.entry.summary,
+                        teSafeSummary,
                         plan.selection,
                         searchContext,
                         ctx.state,
                         ctx.config.compress.protectTags,
+                        ctx.beads,
                     )
 
+                    const teActive = ctx.config.integrations?.tokenEconomizer === "auto"
                     const summaryWithTools = await appendProtectedTools(
                         ctx.client,
                         ctx.state,
@@ -116,6 +125,9 @@ export function createCompressMessageTool(ctx: ToolContext): ReturnType<typeof t
                         searchContext,
                         ctx.config.compress.protectedTools,
                         ctx.config.protectedFilePatterns,
+                        ctx.beads,
+                        teActive ? plan.selection.messageIds.length : undefined,
+                        teActive,
                     )
 
                     preparedPlans.push({

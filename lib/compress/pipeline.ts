@@ -82,8 +82,8 @@ export async function prepareSession(
 
     assignMessageRefs(ctx.state, rawMessages)
 
-    deduplicate(ctx.state, ctx.logger, ctx.config, rawMessages)
-    purgeErrors(ctx.state, ctx.logger, ctx.config, rawMessages)
+    deduplicate(ctx.state, ctx.logger, ctx.config, rawMessages, ctx.beads)
+    purgeErrors(ctx.state, ctx.logger, ctx.config, rawMessages, ctx.beads)
 
     return {
         rawMessages,

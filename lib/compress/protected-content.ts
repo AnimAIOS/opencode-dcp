@@ -1,6 +1,6 @@
 import type { SessionState } from "../state"
 import { isIgnoredUserMessage } from "../messages/query"
-import { isToolProtected } from "../protected-patterns"
+import { escapeRegExpChar, isToolProtected, type BeadsProtection } from "../protected-patterns"
 import {
     buildSubagentResultText,
     extractTaskResultBody,
@@ -56,8 +56,10 @@ export function appendProtectedPromptInfo(
     searchContext: SearchContext,
     state: SessionState,
     enabled: boolean,
+    beads?: BeadsProtection,
 ): string {
-    if (!enabled) return summary
+    // Beads protection is independent of the protectTags flag.
+    if (!enabled && beads?.active !== true) return summary
 
     const protectedTexts: string[] = []
 
@@ -76,7 +78,7 @@ export function appendProtectedPromptInfo(
         for (const part of parts) {
             if (part.type !== "text" || typeof part.text !== "string") continue
 
-            protectedTexts.push(...extractProtectedPromptInfo(part.text))
+            protectedTexts.push(...extractProtectedPromptInfo(part.text, beads, enabled))
         }
     }
 
@@ -90,18 +92,88 @@ export function appendProtectedPromptInfo(
     return summary + heading + body
 }
 
-export function extractProtectedPromptInfo(text: string): string[] {
+export function extractProtectedPromptInfo(
+    text: string,
+    beads?: BeadsProtection,
+    protectTags = true,
+): string[] {
     const protectedTexts: string[] = []
-    const protectTagRegex = /<protect>([\s\S]*?)<\/protect>/gi
-
-    for (const match of text.matchAll(protectTagRegex)) {
-        const protectedText = match[1]?.trim()
-        if (protectedText) {
-            protectedTexts.push(protectedText)
+    const seen = new Set<string>()
+    const add = (value: string | undefined) => {
+        const trimmed = value?.trim()
+        if (trimmed && !seen.has(trimmed)) {
+            seen.add(trimmed)
+            protectedTexts.push(trimmed)
         }
     }
 
+    if (protectTags) {
+        const protectTagRegex = /<protect>([\s\S]*?)<\/protect>/gi
+        for (const match of text.matchAll(protectTagRegex)) add(match[1])
+    }
+
+    if (beads?.active !== true) return protectedTexts
+
+    // `--skills` is the skill-router handoff contract: keep every occurrence
+    // byte-identical, including the field name and its full value.
+    for (const line of text.split(/\r?\n/)) {
+        if (/\bbd\s+(?:create|show|ready|update|dep|close)\b/.test(line)) add(line)
+        for (const field of line.matchAll(/--skills[^\r\n]*/g)) add(field[0])
+    }
+
+    if (beads.prefix) {
+        const escaped = [...beads.prefix].map(escapeRegExpChar).join("")
+        const beadIdRegex = new RegExp(`\\b${escaped}-[0-9A-Za-z][0-9A-Za-z.-]*`, "g")
+        for (const match of text.matchAll(beadIdRegex)) add(match[0])
+    }
+
     return protectedTexts
+}
+
+export function appendCompressionDigest(
+    summary: string,
+    messageCount: number,
+    toolOutputCount: number,
+): string {
+    return `${summary}\n<!-- dcp-compress: ${messageCount} messages, ${toolOutputCount} tool outputs -->`
+}
+
+export function countProtectedToolOutputs(
+    selection: SelectionResolution,
+    searchContext: SearchContext,
+    protectedTools: string[],
+    protectedFilePatterns: string[] = [],
+    beads?: BeadsProtection,
+): number {
+    let count = 0
+    for (const messageId of selection.messageIds) {
+        const message = searchContext.rawMessagesById.get(messageId)
+        if (!message) continue
+        const parts = Array.isArray(message.parts) ? message.parts : []
+        for (const part of parts) {
+            if (part.type !== "tool" || !part.callID) continue
+            const output =
+                part.state?.status === "completed" && part.state?.output
+                    ? typeof part.state.output === "string"
+                        ? part.state.output
+                        : JSON.stringify(part.state.output)
+                    : ""
+            if (
+                isToolProtected(
+                    part.tool,
+                    part.state.input,
+                    protectedTools,
+                    protectedFilePatterns,
+                    "metadata" in part.state ? part.state.metadata : undefined,
+                    beads,
+                ) &&
+                output
+            ) {
+                count++
+            }
+        }
+    }
+    return count
 }
 
 export async function appendProtectedTools(
@@ -113,6 +185,9 @@ export async function appendProtectedTools(
     searchContext: SearchContext,
     protectedTools: string[],
     protectedFilePatterns: string[] = [],
+    beads?: BeadsProtection,
+    digest?: number | boolean | { messageCount?: number; messages?: number; toolOutputCount?: number; toolOutputs?: number; enabled?: boolean },
+    digestEnabled?: boolean,
 ): Promise<string> {
     const protectedOutputs: string[] = []
 
@@ -135,6 +210,7 @@ export async function appendProtectedTools(
                         protectedTools,
                         protectedFilePatterns,
                         "metadata" in part.state ? part.state.metadata : undefined,
+                        beads,
                     )
                 ) {
                     const title = `Tool: ${part.tool}`
@@ -201,10 +277,35 @@ export async function appendProtectedTools(
         }
     }
 
+    let digestRequested = digestEnabled === true
+    let digestMessageCount: number | undefined
+    let digestToolOutputCount: number | undefined
+    if (typeof digest === "number") {
+        digestRequested = true
+        digestMessageCount = digest
+    } else if (digest === true) {
+        digestRequested = true
+    } else if (digest && typeof digest === "object") {
+        digestRequested = digest.enabled !== false
+        digestMessageCount = digest.messageCount ?? digest.messages
+        digestToolOutputCount = digest.toolOutputCount ?? digest.toolOutputs
+    }
+    if (digestRequested && digestMessageCount === undefined) {
+        digestMessageCount = selection.messageIds.length
+    }
+    const digestCount = digestMessageCount ?? selection.messageIds.length
+
     if (protectedOutputs.length === 0) {
+        if (digestRequested) {
+            return appendCompressionDigest(summary, digestCount, digestToolOutputCount ?? 0)
+        }
         return summary
     }
 
     const heading = "\n\nThe following protected tools were used in this conversation as well:"
-    return summary + heading + protectedOutputs.join("")
+    const withTools = summary + heading + protectedOutputs.join("")
+    if (digestRequested) {
+        return appendCompressionDigest(withTools, digestCount, digestToolOutputCount ?? protectedOutputs.length)
+    }
+    return withTools
 }

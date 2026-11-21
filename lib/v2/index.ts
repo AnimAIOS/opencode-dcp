@@ -27,12 +27,17 @@ import {
     stripHallucinations,
     syncCompressionBlocks,
 } from "../messages"
-import { countTokens, getCurrentTokenUsage } from "../token-utils"
+import { getCurrentTokenUsage } from "../token-utils"
 import { matchesGlob } from "../protected-patterns"
 import { history, project } from "./messages"
 import { analyzeContextTokens } from "../commands/context"
 import { buildStatsReport } from "../commands/stats"
 import { rpc } from "./rpc"
+import {
+    countSystemPromptTokens,
+    mapSystemTextsToParts,
+    resolveIntegrations,
+} from "../integrations"
 
 // V2 reports become ephemeral rpc events that the TUI plugin renders as
 // toasts. Never use synthetic() here: its text would enter the model's
@@ -92,6 +97,13 @@ export async function setup(ctx: Plugin.Context) {
         return
     }
     const logger = new Logger(config.debug)
+    // Resolve once at setup: "off" short-circuits detection entirely, and a
+    // failure to detect just leaves Beads protection inactive.
+    const integrations = await resolveIntegrations({
+        config: config.integrations,
+        directory: ctx.location.directory,
+    })
+    const beads = { active: integrations.beads, prefix: integrations.beadsPrefix }
     const prompts = new PromptStore(
         logger,
         ctx.location.directory,
@@ -236,6 +248,7 @@ export async function setup(ctx: Plugin.Context) {
                   logger,
                   config,
                   prompts,
+                  beads,
               }))
 
     // Align host enforcement with DCP's verdict. V2 hosts treat unmatched tool
@@ -283,8 +296,9 @@ export async function setup(ctx: Plugin.Context) {
                     }
                 }
                 state.modelContextLimit = limits.get(`${event.model.providerID}/${event.model.id}`)
-                state.systemPromptTokens = await countTokens(
-                    event.system.map((part) => part.text).join("\n"),
+                // Counts every system part, including a detected TE manual.
+                state.systemPromptTokens = await countSystemPromptTokens(
+                    event.system.map((part) => part.text),
                 )
                 const view = project(event.messages, entries, {
                     ...session,
@@ -302,8 +316,8 @@ export async function setup(ctx: Plugin.Context) {
                 // only while a compress tool call is being prepared. Without this,
                 // state.prune.tools stays empty forever on the V2 path.
                 const pruneToolsBefore = state.prune.tools.size
-                deduplicate(state, logger, config, view.messages)
-                purgeErrors(state, logger, config, view.messages)
+                deduplicate(state, logger, config, view.messages, beads)
+                purgeErrors(state, logger, config, view.messages, beads)
                 const pruneToolsChanged = state.prune.tools.size > pruneToolsBefore
                 prune(state, logger, config, view.messages, view.summaryBase)
                 // Write through block-liveness and prune-marking changes so a
@@ -318,7 +332,11 @@ export async function setup(ctx: Plugin.Context) {
                     view.messages,
                     config.experimental.allowSubAgents,
                 )
-                const priorities = await buildPriorityMap(config, state, view.messages)
+                const priorities = await buildPriorityMap(config, state, view.messages, {
+                    directory: ctx.location.directory,
+                    beads,
+                    systemParts: event.system.map((part) => part.text),
+                })
                 prompts.reload()
                 await injectCompressNudges(
                     state,
@@ -345,11 +363,7 @@ export async function setup(ctx: Plugin.Context) {
                     },
                     system,
                 )
-                event.system = system.system.map((text, index) => ({
-                    ...event.system[index],
-                    type: "text",
-                    text,
-                }))
+                event.system = mapSystemTextsToParts(event.system, system.system)
                 await logger.saveContext(event.sessionID, view.messages)
                 logger.debug("V2 hook applied", {
                     sessionID: event.sessionID,
@@ -368,7 +382,7 @@ export async function setup(ctx: Plugin.Context) {
         const define = (state: SessionState): ToolDefinition =>
             (config.compress.mode === "message"
                 ? createCompressMessageTool
-                : createCompressRangeTool)({ client, state, logger, config, prompts })
+                : createCompressRangeTool)({ client, state, logger, config, prompts, beads })
         const definition = define(createSessionState("compact"))
         await ctx.tool.transform((editor) =>
             editor.add({
@@ -433,6 +447,7 @@ export async function setup(ctx: Plugin.Context) {
                                 config,
                                 ctx.location.directory,
                                 { global: { compress: permission }, agents: {} },
+                                beads,
                             )(
                                 {
                                     command: name,

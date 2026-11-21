@@ -6,7 +6,7 @@ function normalizePath(input: string): string {
     return input.replaceAll("\\", "/")
 }
 
-function escapeRegExpChar(ch: string): string {
+export function escapeRegExpChar(ch: string): string {
     return /[\\.^$+{}()|\[\]]/.test(ch) ? `\\${ch}` : ch
 }
 
@@ -136,12 +136,35 @@ export function isToolNameProtected(toolName: string, patterns: string[]): boole
     return globPatterns.some((pattern) => matchesGlob(toolName, pattern))
 }
 
+/**
+ * The slice of resolved integration state used by pruning protection.
+ * `active` is true only when Beads mode is `auto` AND the workspace was detected.
+ */
+export interface BeadsProtection {
+    active: boolean
+    /** Configured or detected bead prefix; null disables bead-ID matching. */
+    prefix: string | null
+}
+
+const BD_COMMAND_RE = /(?:^|[^\w.-])bd\s+(?:create|show|ready|update|dep|close)\b/
+
+function isBashTool(tool: string): boolean {
+    return tool === "bash" || tool === "shell"
+}
+
+function commandContainsBdSubcommand(input: unknown): boolean {
+    if (typeof input !== "object" || input === null) return false
+    const command = (input as Record<string, unknown>).command
+    return typeof command === "string" && BD_COMMAND_RE.test(command)
+}
+
 export function isToolProtected(
     tool: string,
     input: unknown,
     tools: string[],
     files: string[],
     metadata?: Record<string, unknown>,
+    beads?: BeadsProtection,
 ): boolean {
     const calls = [{ tool, input }]
     // V2 Code Mode keeps nested inputs, but only one combined output. Protect
@@ -153,6 +176,9 @@ export function isToolProtected(
     }
     return calls.some(
         (call) =>
+            (beads?.active === true &&
+                isBashTool(call.tool) &&
+                commandContainsBdSubcommand(call.input)) ||
             isToolNameProtected(call.tool, tools) ||
             isFilePathProtected(getFilePathsFromParameters(call.tool, call.input), files),
     )

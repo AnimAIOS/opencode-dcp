@@ -121,6 +121,42 @@
                 "customPrompts": false
             }
         },
+        "integrations": {
+            "type": "object",
+            "description": "Opt-in integrations with TokenEconomizer and Beads. Both are off unless explicitly enabled; 'auto' enables an integration only when it is detected in the current project.",
+            "additionalProperties": false,
+            "properties": {
+                "tokenEconomizer": {
+                    "type": "string",
+                    "enum": ["auto", "off"],
+                    "default": "off",
+                    "description": "'auto' protects TE's injected manual when detected; 'off' disables the integration."
+                },
+                "beads": {
+                    "type": "string",
+                    "enum": ["auto", "off"],
+                    "default": "off",
+                    "description": "'auto' enables Beads-aware behaviour when a workspace is detected; 'off' disables the integration."
+                },
+                "beadsPrefix": {
+                    "description": "Issue prefix used to recognise bead IDs. null resolves it from the workspace metadata.",
+                    "default": null,
+                    "oneOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
+                }
+            },
+            "default": {
+                "tokenEconomizer": "off",
+                "beads": "off",
+                "beadsPrefix": null
+            }
+        },
         "protectedFilePatterns": {
             "type": "array",
             "items": {

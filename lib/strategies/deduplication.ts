@@ -1,7 +1,7 @@
 import { PluginConfig } from "../config"
 import { Logger } from "../logger"
 import type { SessionState, WithParts } from "../state"
-import { isToolProtected } from "../protected-patterns"
+import { isToolProtected, type BeadsProtection } from "../protected-patterns"
 import { getTotalToolTokens } from "../token-utils"
 
 /**
@@ -14,6 +14,7 @@ export const deduplicate = (
     logger: Logger,
     config: PluginConfig,
     messages: WithParts[],
+    beads?: BeadsProtection,
 ): void => {
     if (state.manualMode && !config.manualMode.automaticStrategies) {
         return
@@ -54,6 +55,7 @@ export const deduplicate = (
                 protectedTools,
                 config.protectedFilePatterns,
                 metadata.metadata,
+                beads,
             )
         ) {
             continue
