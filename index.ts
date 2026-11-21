@@ -74,6 +74,7 @@ const server: Plugin = (async (ctx) => {
     )
 
     const transformSystem = createSystemPromptHandler(state, logger, config, prompts)
+    const handleEvent = createEventHandler(state, logger)
 
     return {
         // Shares state (e.g. modelContextLimit) with awaited transforms, so it takes the same lock.
@@ -84,7 +85,8 @@ const server: Plugin = (async (ctx) => {
         "experimental.text.complete": createTextCompleteHandler(),
         "command.execute.before": (input, output) =>
             exclusive(state, () => executeCommand(input, output)),
-        event: createEventHandler(state, logger),
+        // Mutates compressionTiming / prune.messages durations and saves, so it takes the same lock.
+        event: (input) => exclusive(state, () => handleEvent(input)),
         tool: {
             ...(config.compress.permission !== "deny" && {
                 [compressToolName(config)]:

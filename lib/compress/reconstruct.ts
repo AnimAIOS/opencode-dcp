@@ -2,8 +2,20 @@ import type { SessionState, WithParts } from "../state"
 import type { Logger } from "../logger"
 import { messageHasCompress } from "../messages/query"
 import { countTokens } from "../token-utils"
-import { buildSearchContext, resolveAnchorMessageId, resolveBoundaryIds, resolveSelection } from "./search"
-import { allocateBlockId, allocateRunId, applyCompressionState, wrapCompressedSummary } from "./state"
+import {
+    buildSearchContext,
+    resolveAnchorMessageId,
+    resolveBoundaryIds,
+    resolveSelection,
+} from "./search"
+import {
+    allocateBlockId,
+    allocateRunId,
+    applyCompressionState,
+    assertPlannedBlockIds,
+    peekBlockIds,
+    wrapCompressedSummary,
+} from "./state"
 
 interface CompressToolResult {
     messageId: string
@@ -28,7 +40,11 @@ function extractCompressResults(messages: WithParts[]): CompressToolResult[] {
 
         const parts = Array.isArray(message.parts) ? message.parts : []
         for (const part of parts) {
-            if (part.type !== "tool" || part.tool !== "compress" || part.state?.status !== "completed") {
+            if (
+                part.type !== "tool" ||
+                part.tool !== "compress" ||
+                part.state?.status !== "completed"
+            ) {
                 continue
             }
 
@@ -39,7 +55,11 @@ function extractCompressResults(messages: WithParts[]): CompressToolResult[] {
 
             const ranges: CompressToolResult["ranges"] = []
             for (const entry of input.content) {
-                if (typeof entry.startId === "string" && typeof entry.endId === "string" && typeof entry.summary === "string") {
+                if (
+                    typeof entry.startId === "string" &&
+                    typeof entry.endId === "string" &&
+                    typeof entry.summary === "string"
+                ) {
                     ranges.push({
                         startId: entry.startId,
                         endId: entry.endId,
@@ -84,6 +104,11 @@ export async function reconstructFromHistory(
         return 0
     }
 
+    // Capture state identity before any awaits. If the session state is reset or
+    // restored while counts are in flight, assertPlannedBlockIds detects the change
+    // and skips applying reconstructed blocks to the wrong state.
+    const prune = state.prune.messages
+
     let totalReconstructed = 0
     let skippedResults = 0
 
@@ -93,6 +118,8 @@ export async function reconstructFromHistory(
 
         for (const range of result.ranges) {
             try {
+                // Plan the block id before awaiting, mirroring the compress tools.
+                const plannedBlockIds = peekBlockIds(state, 1)
                 const { startReference, endReference } = resolveBoundaryIds(
                     searchContext,
                     state,
@@ -100,13 +127,21 @@ export async function reconstructFromHistory(
                     range.endId,
                 )
 
-                const selection = await resolveSelection(searchContext, startReference, endReference)
+                const selection = await resolveSelection(
+                    searchContext,
+                    startReference,
+                    endReference,
+                )
                 const anchorMessageId = resolveAnchorMessageId(startReference)
 
-                const blockId = allocateBlockId(state)
-                const storedSummary = wrapCompressedSummary(blockId, range.summary)
+                const storedSummary = wrapCompressedSummary(plannedBlockIds[0], range.summary)
                 const summaryTokens = await countTokens(storedSummary)
 
+                // Guard before any mutation: a session reset during the awaits must not
+                // apply reconstructed blocks to the replaced state.
+                assertPlannedBlockIds(state, prune, plannedBlockIds)
+
+                const blockId = allocateBlockId(state)
                 const consumedBlockIds = selection.requiredBlockIds
 
                 applyCompressionState(

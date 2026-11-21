@@ -238,9 +238,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
     }
 
     // Persist state
-    saveSessionState(state, logger).catch((err) =>
-        logger.error("Failed to persist state after sweep", { error: err.message }),
-    )
+    await saveSessionState(state, logger)
 
     const message = formatSweepMessage(
         newToolIds.length,

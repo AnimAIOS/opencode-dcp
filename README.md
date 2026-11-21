@@ -1,34 +1,12 @@
 # Dynamic Context Pruning Plugin
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dansmolsky)
-[![npm version](https://img.shields.io/npm/v/@tarquinen/opencode-dcp.svg)](https://www.npmjs.com/package/@tarquinen/opencode-dcp)
-
 Automatically reduces token usage in OpenCode by managing conversation context.
 
 ![DCP in action](assets/images/dcp-demo9.png)
 
 ## Installation
 
-Install from the OpenCode V2 CLI:
-
-```bash
-opencode plugin add @tarquinen/opencode-dcp@latest
-```
-
-This installs the package and adds it to your global OpenCode config.
-
-## Project Status
-
-Development on DCP has slowed because most new context-management work has moved to [Sleev](https://sleev.ai) and the `sleev` CLI.
-
-Sleev builds on DCP's core ideas with more advanced context management and significantly better performance. It's a local proxy that already supports Claude Code, Codex, OpenCode, Pi, and Hermes, and can be extended to support any harness.
-
-DCP remains available for OpenCode plugin users, but new features are landing in Sleev first. If you are starting fresh, we recommend trying Sleev:
-
-```bash
-npm i -g sleev
-sleev
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md#local-installation) for building from this checkout and adding the plugin to your OpenCode configuration.
 
 ## How It Works
 
@@ -78,7 +56,7 @@ Each level overrides the previous, so project settings take priority over global
 
 ```jsonc
 {
-    "$schema": "https://raw.githubusercontent.com/Opencode-DCP/opencode-dynamic-context-pruning/master/dcp.schema.json",
+    "$schema": "https://raw.githubusercontent.com/AnimAIOS/omp-dynamic-context-pruning/master/dcp.schema.json",
     // Enable or disable the plugin
     "enabled": true,
     // Automatically update npm-installed DCP when a newer npm latest is available.
@@ -228,7 +206,7 @@ For the `compress` tool, `compress.protectedTools` ensures specific tool outputs
 
 ### Tool name
 
-DCP's compress tool registers as `dcp_compress` by default (`compress.toolName`). Some gateway proxies inject their own `compress` tool into every completion request and shadow any host tool with that name (observed with the sleev gateway, whose `compress` schedules compressions but never applies them). If your stack has no such shadowing, you can set `compress.toolName: "compress"` to restore the legacy name; DCP still recognizes session parts recorded under the legacy name either way.
+DCP's compress tool registers as `dcp_compress` by default (`compress.toolName`). Some gateway proxies inject their own `compress` tool into every completion request and shadow any host tool with that name. If your stack has no such shadowing, you can set `compress.toolName: "compress"` to restore the legacy name; DCP still recognizes session parts recorded under the legacy name either way.
 
 ## Impact on Prompt Caching
 

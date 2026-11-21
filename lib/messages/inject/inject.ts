@@ -48,7 +48,7 @@ export const injectCompressNudges = async (
     }
 
     if (!createAnchors) {
-        void applyAnchoredNudges(state, config, messages, prompts, compressionPriorities)
+        applyAnchoredNudges(state, config, messages, prompts, compressionPriorities)
         return
     }
 
@@ -59,7 +59,7 @@ export const injectCompressNudges = async (
         state.nudges.contextLimitAnchors.clear()
         state.nudges.turnNudgeAnchors.clear()
         state.nudges.iterationNudgeAnchors.clear()
-        void saveSessionState(state, logger)
+        await saveSessionState(state, logger)
         return
     }
 
@@ -141,10 +141,10 @@ export const injectCompressNudges = async (
         }
     }
 
-    void applyAnchoredNudges(state, config, messages, prompts, compressionPriorities)
+    applyAnchoredNudges(state, config, messages, prompts, compressionPriorities)
 
     if (anchorsChanged) {
-        void saveSessionState(state, logger)
+        await saveSessionState(state, logger)
     }
 }
 

@@ -33,7 +33,9 @@
         "sandbox": "node scripts/sandbox.mjs",
         "typecheck": "tsc --noEmit && npm run typecheck --workspace=tests/logger",
         "test": "node --import tsx --test tests/*.test.ts && npm run --silent test:tui && npm test --workspace=tests/logger",
-        "test:tui": "if command -v bun >/dev/null 2>&1; then bun test tests/v2-tui-render.test.tsx; else echo '[dcp] bun not found: TUI render test skipped'; fi",
+        "test:tui": "if command -v bun >/dev/null 2>&1; then bun test tests/v2-tui-*.test.tsx; else echo '[dcp] bun not found: TUI render tests skipped'; fi",
+        "test:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include='lib/**/*.ts' --test-coverage-include-all --test-coverage-lines=90 --test-coverage-branches=80 --test-coverage-functions=85 tests/*.test.ts",
+        "test:coverage:tui": "if command -v bun >/dev/null 2>&1; then bun test --coverage tests/v2-tui-*.test.tsx tests/v2-tui-*.test.ts; else echo '[dcp] bun not found: TUI coverage skipped'; fi",
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "dcp": "tsx scripts/print.ts"

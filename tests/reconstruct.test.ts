@@ -3,10 +3,11 @@ import test from "node:test"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { mkdirSync } from "node:fs"
-import { createSessionState, type WithParts } from "../lib/state"
+import { createSessionState, resetSessionState, type WithParts } from "../lib/state"
 import { assignMessageRefs } from "../lib/message-ids"
 import { hasCompressHistory, reconstructFromHistory } from "../lib/compress/reconstruct"
 import { Logger } from "../lib/logger"
+import { tokenCounter } from "../lib/token-counter"
 
 const testDataHome = join(tmpdir(), `opencode-dcp-reconstruct-tests-${process.pid}`)
 const testConfigHome = join(tmpdir(), `opencode-dcp-reconstruct-config-tests-${process.pid}`)
@@ -16,6 +17,14 @@ process.env.XDG_CONFIG_HOME = testConfigHome
 
 mkdirSync(testDataHome, { recursive: true })
 mkdirSync(testConfigHome, { recursive: true })
+
+function deferred<T = void>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((resolveFn) => {
+        resolve = resolveFn
+    })
+    return { promise, resolve }
+}
 
 function textPart(messageID: string, sessionID: string, id: string, text: string) {
     return {
@@ -93,7 +102,12 @@ function buildForkedSessionMessages(sessionID: string): WithParts[] {
                 time: { created: 400 },
             } as WithParts["info"],
             parts: [
-                textPart("fork-msg-assistant-2", sessionID, "p4", "The system has three components"),
+                textPart(
+                    "fork-msg-assistant-2",
+                    sessionID,
+                    "p4",
+                    "The system has three components",
+                ),
                 compressToolPart(
                     "fork-msg-assistant-2",
                     sessionID,
@@ -476,4 +490,54 @@ test("reconstructFromHistory returns 0 when no compress results exist", async ()
     const reconstructed = await reconstructFromHistory(state, logger, messages)
     assert.equal(reconstructed, 0)
     assert.equal(state.prune.messages.blocksById.size, 0)
+})
+
+test("reconstructFromHistory does not apply blocks when session state is reset during counting", async () => {
+    const sessionID = "ses_fork_reconstruct_reset"
+    const messages = buildForkedSessionMessages(sessionID)
+
+    // Mark the summary so the stubbed token count suspends at the countTokens await.
+    for (const message of messages) {
+        for (const part of message.parts) {
+            if (part.type === "tool" && part.tool === "compress") {
+                const input = (part as any).state?.input
+                if (input?.content?.[0]) {
+                    input.content[0].summary += " GATE-RESET"
+                }
+            }
+        }
+    }
+
+    const state = createSessionState()
+    state.sessionId = sessionID
+    const logger = new Logger(false)
+    assignMessageRefs(state, messages)
+
+    const originalCount = tokenCounter.count
+    const entered = deferred()
+    const release = deferred()
+    tokenCounter.count = async (text: string) => {
+        if (text.includes("GATE-RESET")) {
+            entered.resolve()
+            await release.promise
+        }
+        return text.length
+    }
+
+    let reconstructed = -1
+    try {
+        const pending = reconstructFromHistory(state, logger, messages)
+        await entered.promise
+        // Reset the session while reconstruction is suspended at the await, exactly as
+        // the compress-tool staleness tests do. The guard must skip every range.
+        resetSessionState(state)
+        release.resolve()
+        reconstructed = await pending
+    } finally {
+        tokenCounter.count = originalCount
+    }
+
+    assert.equal(reconstructed, 0)
+    assert.equal(state.prune.messages.blocksById.size, 0)
+    assert.equal(state.prune.messages.activeBlockIds.size, 0)
 })

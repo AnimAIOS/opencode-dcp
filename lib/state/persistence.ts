@@ -16,6 +16,41 @@ import { serializePruneMessagesState } from "./utils"
 /** Monotonic counter making each atomic-write temp path unique within a process. */
 let tmpSequence = 0
 
+/**
+ * Per-session write queues. saveSessionState builds its whole snapshot before
+ * its first await, so snapshots are always created in call order. Serializing
+ * the commits in that same order guarantees the newest snapshot is the last one
+ * written to disk. Without it, a detached save of an older snapshot could finish
+ * after an awaited save of a newer one and silently clobber it.
+ */
+const writeQueues = new Map<string, Promise<void>>()
+
+function enqueueSessionWrite(sessionId: string, write: () => Promise<void>): Promise<void> {
+    const previous = writeQueues.get(sessionId) ?? Promise.resolve()
+    // Run the next write even if a previous one failed; each write handles its
+    // own errors and a failure must not stall every later save for the session.
+    const next = previous.then(write, write)
+    writeQueues.set(sessionId, next)
+    const clear = () => {
+        if (writeQueues.get(sessionId) === next) {
+            writeQueues.delete(sessionId)
+        }
+    }
+    void next.then(clear, clear)
+    return next
+}
+
+/**
+ * Test-only gate awaited right before each atomic disk write. A race test can
+ * hold the first write open here while a newer save is scheduled behind it,
+ * then release it to verify the newer snapshot wins on disk.
+ */
+let beforeWrite: (() => Promise<void>) | undefined
+
+export function setWriteGateForTests(gate: (() => Promise<void>) | undefined): void {
+    beforeWrite = gate
+}
+
 /** Prune state as stored on disk */
 export interface PersistedPruneMessagesState {
     byMessageId: Record<string, PrunedMessageEntry>
@@ -115,29 +150,34 @@ export function derivePersistedCompressionStats(
     }
 }
 
-
-async function writePersistedSessionState(
+function writePersistedSessionState(
     sessionId: string,
     state: PersistedSessionState,
     logger: Logger,
 ): Promise<void> {
-    await ensureStorageDir()
+    return enqueueSessionWrite(sessionId, async () => {
+        await ensureStorageDir()
 
-    const filePath = getSessionFilePath(sessionId)
-    const content = JSON.stringify(state, null, 2)
-    // Write via temp file + rename so a kill/restart mid-write can never leave
-    // a truncated JSON file behind (a truncated file would fail to load on the
-    // next start and previously lost every compression block).
-    // The suffix must be unique per call: saves for the same session can run
-    // concurrently (fire-and-forget inject saves vs awaited tool saves), and a
-    // shared name lets two writers interleave (write/write/rename/ENOENT).
-    const tmpPath = `${filePath}.${process.pid}.${tmpSequence++}.${randomBytes(4).toString("hex")}.tmp`
-    await fs.writeFile(tmpPath, content, "utf-8")
-    await fs.rename(tmpPath, filePath)
+        const filePath = getSessionFilePath(sessionId)
+        const content = JSON.stringify(state, null, 2)
+        // Write via temp file + rename so a kill/restart mid-write can never leave
+        // a truncated JSON file behind (a truncated file would fail to load on the
+        // next start and previously lost every compression block).
+        // The suffix must be unique per call: saves for the same session can run
+        // concurrently (fire-and-forget inject saves vs awaited tool saves), and a
+        // shared name lets two writers interleave (write/write/rename/ENOENT).
+        const gate = beforeWrite
+        if (gate) {
+            await gate()
+        }
+        const tmpPath = `${filePath}.${process.pid}.${tmpSequence++}.${randomBytes(4).toString("hex")}.tmp`
+        await fs.writeFile(tmpPath, content, "utf-8")
+        await fs.rename(tmpPath, filePath)
 
-    logger.info("Saved session state to disk", {
-        sessionId,
-        totalTokensSaved: state.stats.totalPruneTokens,
+        logger.info("Saved session state to disk", {
+            sessionId,
+            totalTokensSaved: state.stats.totalPruneTokens,
+        })
     })
 }
 

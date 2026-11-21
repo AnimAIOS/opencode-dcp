@@ -181,7 +181,7 @@ export function createChatMessageTransformHandler(
             await cacheSystemPromptTokens(state, workingMessages)
             assignMessageRefs(state, workingMessages)
             syncCompressionBlocks(state, logger, workingMessages)
-            syncToolCache(state, config, logger, workingMessages)
+            await syncToolCache(state, config, logger, workingMessages)
             buildToolIdList(state, workingMessages)
             prune(state, logger, config, workingMessages)
             await injectExtendedSubAgentResults(
@@ -193,7 +193,7 @@ export function createChatMessageTransformHandler(
             )
             const compressionPriorities = await buildPriorityMap(config, state, workingMessages)
             prompts.reload()
-            injectCompressNudges(
+            await injectCompressNudges(
                 state,
                 config,
                 logger,

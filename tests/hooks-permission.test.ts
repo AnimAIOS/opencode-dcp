@@ -936,49 +936,71 @@ test("manual mode persisted setting refreshes server session state", async () =>
 })
 
 test("chat message transform resolves a percentage threshold before the system prompt hook runs", async () => {
+    const makeHandler = (state: ReturnType<typeof createSessionState>, config: PluginConfig) =>
+        createChatMessageTransformHandler(
+            {
+                session: { get: async () => ({}) },
+                config: {
+                    providers: async () => ({
+                        data: {
+                            providers: [
+                                {
+                                    id: "anthropic",
+                                    models: { "claude-x": { limit: { context: 200000 } } },
+                                },
+                            ],
+                        },
+                    }),
+                },
+            } as any,
+            state,
+            new Logger(false),
+            config,
+            buildPromptStore(),
+            { global: undefined, agents: {} },
+        )
+    const messages = () => {
+        const user = (id: string) => {
+            const message = buildMessage(id, "user", "short question")
+            ;(message.info as any).model = { providerID: "anthropic", modelID: "claude-x" }
+            return message
+        }
+        return [
+            user("user-1"),
+            buildMessage("assistant-1", "assistant", "short answer"),
+            user("user-2"),
+        ]
+    }
+
     const state = createSessionState()
     const config = buildConfig("allow")
     config.compress.minContextLimit = "55%"
     config.compress.maxContextLimit = "80%"
-    const handler = createChatMessageTransformHandler(
-        {
-            session: { get: async () => ({}) },
-            config: {
-                providers: async () => ({
-                    data: {
-                        providers: [
-                            {
-                                id: "anthropic",
-                                models: { "claude-x": { limit: { context: 200000 } } },
-                            },
-                        ],
-                    },
-                }),
-            },
-        } as any,
-        state,
-        new Logger(false),
-        config,
-        buildPromptStore(),
-        { global: undefined, agents: {} },
-    )
-    const user = (id: string) => {
-        const message = buildMessage(id, "user", "short question")
-        ;(message.info as any).model = { providerID: "anthropic", modelID: "claude-x" }
-        return message
-    }
 
-    await handler(
-        {},
-        {
-            messages: [
-                user("user-1"),
-                buildMessage("assistant-1", "assistant", "short answer"),
-                user("user-2"),
-            ],
-        },
-    )
+    await makeHandler(state, config)({}, { messages: messages() })
 
+    // The limit is resolved inside the hook, so the 55% threshold is evaluated
+    // before it returns: this short context is under the threshold and the
+    // seeded turn anchors are cleared synchronously (no fire-and-forget tail).
     assert.equal(state.modelContextLimit, 200000)
-    assert.equal(state.nudges.turnNudgeAnchors.size, 2)
+    assert.equal(state.nudges.turnNudgeAnchors.size, 0)
+
+    // Crossing the threshold must leave the nudge in the returned messages by
+    // the time the hook resolves — no macrotask flush allowed.
+    const nudgedState = createSessionState()
+    const nudgedConfig = buildConfig("allow")
+    nudgedConfig.compress.minContextLimit = "0%"
+    nudgedConfig.compress.maxContextLimit = "80%"
+    const nudgedOutput = { messages: messages() }
+    await makeHandler(nudgedState, nudgedConfig)({}, nudgedOutput)
+
+    const nudgeText = nudgedOutput.messages.flatMap((message) =>
+        message.parts
+            .map((part: any) => part.text)
+            .filter((text: unknown): text is string => typeof text === "string"),
+    )
+    assert.ok(
+        nudgeText.some((text) => text.includes("DCP: compress now.")),
+        "the turn nudge must be injected before the chat transform hook resolves",
+    )
 })
